@@ -9,6 +9,8 @@ import ROOT
 import re
 import os
 
+from sklearn import metrics
+
 ROOT.gRandom.SetSeed(123)
 ROOT.gROOT.SetBatch(True)
 ROOT.gROOT.SetStyle("Plain")
@@ -272,15 +274,15 @@ class NetworkDense:
                 kernel_regularizer=keras.regularizers.l2(regLoss)
             ),
             keras.layers.Dropout(0.2),
-            keras.layers.Dense(20, activation=keras.layers.LeakyReLU(alpha=0.1),
+            keras.layers.Dense(50, activation=keras.layers.LeakyReLU(alpha=0.1),
                 kernel_regularizer=keras.regularizers.l2(regLoss)
             ),
             keras.layers.Dropout(0.1),
-            keras.layers.Dense(20, activation=keras.layers.LeakyReLU(alpha=0.1),
+            keras.layers.Dense(50, activation=keras.layers.LeakyReLU(alpha=0.1),
                 kernel_regularizer=keras.regularizers.l2(regLoss)
             ),
             keras.layers.Dropout(0.1),
-            keras.layers.Dense(20, activation=keras.layers.LeakyReLU(alpha=0.1),
+            keras.layers.Dense(50, activation=keras.layers.LeakyReLU(alpha=0.1),
                 kernel_regularizer=keras.regularizers.l2(regLoss)
             ),
             keras.layers.Dropout(0.1),
@@ -298,45 +300,7 @@ class NetworkDense:
         for layer in self.predictLayers[1:]:
             predict = layer(predict)
         return predict
-    
-        
-# Get ROC curve for given signal and background distributions
-def getROC(signal,background):
 
-    # number of bins
-    N = signal.GetNbinsX()+2
-    sigHistContent = numpy.zeros(N)
-    bgHistContent = numpy.zeros(N)
-
-    for i in range(N):
-        sigHistContent[i] = signal.GetBinContent(i)
-        bgHistContent[i] = background.GetBinContent(i)
-
-    sigN = sum(sigHistContent)
-    bgN = sum(bgHistContent)
-
-    sigEff = []
-    bgRej = []
-    bgEff = []
-    sig_integral = 0.0
-    bg_integral = 0.0
-
-    for ibin in reversed(range(N)):
-        sig_integral += sigHistContent[ibin]
-        bg_integral += bgHistContent[ibin]
-        sigEff.append(sig_integral / sigN)
-        bgRej.append(1 - bg_integral/bgN)
-        bgEff.append(bg_integral / bgN)
-    return sigEff, bgRej, bgEff
-
-def getAUC(sigEff, bgRej):
-    integral=0.0
-    for i in range(len(sigEff) - 1):
-        w = math.fabs(sigEff[i+1] - sigEff[i])
-        h = 0.5*(bgRej[i+1] + bgRej[i])
-        x = (sigEff[i+1] + sigEff[i])*0.5
-        integral +=w * math.fabs(h - (1-x))
-    return math.fabs(integral)
 
 def drawROC(name,sigEff,bgEff,signalName="Signal",backgroundName="Background",auc=None,style=1):
     cv = ROOT.TCanvas("cv_roc"+str(random.random()),"",800,700)
@@ -372,7 +336,7 @@ def drawROC(name,sigEff,bgEff,signalName="Signal",backgroundName="Background",au
     cv.SetLogy(1)
 
     axis=ROOT.TH2F("axis" + str(random.random()),";" + signalName + " efficiency;" + backgroundName + " efficiency", 
-        50, 0, 1.0, 50, 0.01, 1.0
+        50, 0, 1.0, 50, 10**-7, 1.0
     )
     axis.GetYaxis().SetNdivisions(508)
     axis.GetXaxis().SetNdivisions(508)
@@ -394,6 +358,21 @@ def drawROC(name,sigEff,bgEff,signalName="Signal",backgroundName="Background",au
     graphL.Draw("SameL")
 
     ROOT.gPad.RedrawAxis()
+    
+    markerCutBased = ROOT.TMarker(0.336,0.00044,20)
+    markerCutBased.SetMarkerSize(1.4)
+    markerCutBased.SetMarkerColor(ROOT.kViolet+2)
+    markerCutBased.Draw("Same")
+    
+    pMarker=ROOT.TPaveText(0.3,0.00044,0.3,0.00044)
+    pMarker.SetFillStyle(0)
+    pMarker.SetBorderSize(0)
+    pMarker.SetTextFont(63)
+    pMarker.SetTextSize(25)
+    pMarker.SetTextColor(ROOT.kViolet+2)
+    pMarker.SetTextAlign(32)
+    pMarker.AddText("cut-based")
+    pMarker.Draw("Same")
 
     pCMS=ROOT.TPaveText(cv.GetLeftMargin(),0.94,cv.GetLeftMargin(),0.94,"NDC")
     pCMS.SetFillColor(ROOT.kWhite)
@@ -528,13 +507,25 @@ trainFiles = []
 testFiles = []
 
 for l in os.listdir(basepath):
+    filePath = os.path.join(basepath,l)
     if re.match("train_\w+.hdf5",l):
-        trainFiles.append(os.path.join(basepath,l))
+        try:
+            f = h5py.File(filePath, 'r')
+            trainFiles.append(filePath)
+            f.close()
+        except Exception,e:
+            print "cannot open file",filePath," -> skip"
+            
     if re.match("test_\w+.hdf5",l):
-        testFiles.append(os.path.join(basepath,l))
+        try:
+            f = h5py.File(filePath, 'r')
+            testFiles.append(filePath)
+            f.close()
+        except Exception,e:
+            print "cannot open file",filePath," -> skip"
         
-#trainFiles = trainFiles[0:1]
-#testFiles = testFiles[0:1]
+#trainFiles = trainFiles[0:10]
+#testFiles = testFiles[0:10]
         
 print "found ",len(trainFiles),"/",len(testFiles)," train/test files"
 #sys.exit(1)
@@ -591,7 +582,7 @@ print "-"*70
 
     
 previousLoss = 1e10
-for epoch in range(1,101):
+for epoch in range(1,51):
     if epoch>1:
         model.load_weights(os.path.join(outputFolder,"weights_%i.hdf5"%(epoch-1)))
 
@@ -606,9 +597,36 @@ for epoch in range(1,101):
     nSignalTrain = 0
     
     histSignalTrain = ROOT.TH1F("signalTrain"+str(epoch)+str(random.random()),"",10000,0,1)
+    histSignalTrain.Sumw2()
     histBackgroundTrain = ROOT.TH1F("backgroundTrain"+str(epoch)+str(random.random()),"",10000,0,1)
+    histBackgroundTrain.Sumw2()
+    
+    classLossFct = model.total_loss #includes also regularization loss
+    inputGradients = tf.gradients(classLossFct,model.inputs)
+    
+    sess = K.get_session()
     
     for batch in trainBatch(batchSize):
+        if (epoch==0 and stepTrain>10) or (epoch>0):
+        
+            feedDict = {
+                K.learning_phase(): 0
+            }
+            for i in range(len(model.outputs)):
+                feedDict[model.targets[i]] = batch["truth"][i]
+                feedDict[model.sample_weights[i]] = numpy.ones(batch["truth"][i].shape[0])
+            
+            for i in range(len(model.inputs)):
+                feedDict[model.inputs[i]] = batch["features"][i]
+
+            classLossVal,inputGradientsVal = sess.run([classLossFct,inputGradients],feed_dict=feedDict)         
+            
+            direction = numpy.abs(numpy.random.normal(0,0.9,len(model.inputs)))+0.1
+            for i in range(len(model.inputs)):
+                batch["features"][i]+=direction[i]*inputGradientsVal[i]
+            
+    
+    
         stepTrain += 1
         result = model.train_on_batch(batch["features"],batch["truth"],sample_weight=batch["weight"])
         predict = model.predict_on_batch(batch["features"])
@@ -652,7 +670,12 @@ for epoch in range(1,101):
     nSignalTest = 0
     
     histSignalTest = ROOT.TH1F("signalTest"+str(epoch)+str(random.random()),"",10000,0,1)
+    histSignalTest.Sumw2()
     histBackgroundTest = ROOT.TH1F("backgroundTest"+str(epoch)+str(random.random()),"",10000,0,1)
+    histBackgroundTest.Sumw2()
+    
+    scoreTest = []
+    truthTest = []
     
     for batch in testBatch(batchSize):
         stepTest += 1
@@ -666,9 +689,13 @@ for epoch in range(1,101):
         Nbatch = len(batch["truth"])
         
         for i in range(Nbatch):
+            scoreTest.append(predict[i][0][0])
             if batch["truth"][i][0][0]>0.5:
                 nSignalTest+=1
                 histSignalTest.Fill(predict[i][0][0])
+                
+                
+                truthTest.append(1)
                 if predict[i][0][0]>0.5:
                     nAccSignalTest+=1
                     nAccTest+=1
@@ -676,6 +703,8 @@ for epoch in range(1,101):
                 
                 
             else:
+                truthTest.append(0)
+            
                 histBackgroundTest.Fill(predict[i][0][0])
                 if predict[i][0][0]<0.5:
                     nAccTest+=1
@@ -690,9 +719,10 @@ for epoch in range(1,101):
             )
            
             
-    
-    sigEffTest, bgRejTest, bgEffTest = getROC(histSignalTest,histBackgroundTest)
-    aucTest = getAUC(sigEffTest, bgRejTest)
+    bgEffTest,sigEffTest,thres = metrics.roc_curve(truthTest, scoreTest)
+    aucTest = metrics.auc(bgEffTest,sigEffTest)
+    #sigEffTest, bgRejTest, bgEffTest = getROC(histSignalTest,histBackgroundTest)
+    #aucTest = getAUC(sigEffTest, bgRejTest)
     drawROC(os.path.join(outputFolder,"roc_epoch%i"%epoch),sigEffTest,bgEffTest,auc=aucTest)
     
     histSignalTrain.Rebin(500)
