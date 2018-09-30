@@ -27,26 +27,38 @@ def closestJet(tree,eta,phi):
 features = [
     ["mu1_iso",lambda i,tree: math.log10(1e-5+tree.Muon_pfRelIso03_all[tree.BToKmumu_mu1_index[i]])],
     ["mu2_iso",lambda i,tree: math.log10(1e-5+tree.Muon_pfRelIso03_all[tree.BToKmumu_mu2_index[i]])],
-    ["kmu1_relpt",lambda i,tree: math.log10(tree.BToKmumu_kaon_pt[i]/(tree.BToKmumu_mu1_pt[i]))],
+    
     ["mumu_deltaR",lambda i,tree: math.sqrt((tree.BToKmumu_mu1_eta[i]-tree.BToKmumu_mu2_eta[i])**2+deltaPhi(tree.BToKmumu_mu1_phi[i],tree.BToKmumu_mu2_phi[i])**2)],
     ["mumu_deltaxy",lambda i,tree: math.log10(math.fabs(tree.BToKmumu_mu1_dxy[i]-tree.BToKmumu_mu2_dxy[i])+1e-10)],
     ["mumu_deltaz",lambda i,tree: math.log10(math.fabs(tree.BToKmumu_mu1_dz[i]-tree.BToKmumu_mu2_dz[i])+1e-10)],
+    
     ["kmu1_deltaR",lambda i,tree: math.sqrt((tree.BToKmumu_mu1_eta[i]-tree.BToKmumu_kaon_eta[i])**2+deltaPhi(tree.BToKmumu_mu1_phi[i],tree.BToKmumu_kaon_phi[i])**2)],
     ["kmu2_deltaR",lambda i,tree: math.sqrt((tree.BToKmumu_mu2_eta[i]-tree.BToKmumu_kaon_eta[i])**2+deltaPhi(tree.BToKmumu_mu2_phi[i],tree.BToKmumu_kaon_phi[i])**2)],
+    
+    ["kmu1_relpt",lambda i,tree: math.log10(tree.BToKmumu_kaon_pt[i]/(tree.BToKmumu_mu1_pt[i]+1e-10))],
+    ["kmu2_relpt",lambda i,tree: math.log10(tree.BToKmumu_kaon_pt[i]/(tree.BToKmumu_mu2_pt[i]+1e-10))],
+    
     ["kmu1_deltaxy",lambda i,tree: math.log10(math.fabs(tree.BToKmumu_mu1_dxy[i]-tree.BToKmumu_kaon_dxy[i])+1e-10)],
-    ["kmu1_deltaz",lambda i,tree: math.log10(math.fabs(tree.BToKmumu_mu1_dz[i]-tree.BToKmumu_kaon_dz[i])+1e-10)],
-    ["kmu2_relpt",lambda i,tree: math.log10(tree.BToKmumu_kaon_pt[i]/(tree.BToKmumu_mu2_pt[i]))],
     ["kmu2_deltaxy",lambda i,tree: math.log10(math.fabs(tree.BToKmumu_mu2_dxy[i]-tree.BToKmumu_kaon_dxy[i])+1e-10)],
+    
+    ["kmu1_deltaz",lambda i,tree: math.log10(math.fabs(tree.BToKmumu_mu1_dz[i]-tree.BToKmumu_kaon_dz[i])+1e-10)],
     ["kmu2_deltaz",lambda i,tree: math.log10(math.fabs(tree.BToKmumu_mu1_dz[i]-tree.BToKmumu_kaon_dz[i])+1e-10)],
-    ["k_relpt",lambda i,tree: tree.BToKmumu_mass[i]/(tree.BToKmumu_kaon_pt[i])],
+    
+    ["k_pt",lambda i,tree: math.log10(tree.BToKmumu_kaon_pt[i]+1e-10)],
+    
     ["k_eta",lambda i,tree: math.fabs(tree.BToKmumu_kaon_eta[i])],
     ["k_dxy",lambda i,tree: math.log10(math.fabs(tree.BToKmumu_kaon_dxy[i])+1e-10)],
     ["k_dz",lambda i,tree: math.log10(math.fabs(tree.BToKmumu_kaon_dz[i])+1e-10)],
-    ["k_djet",lambda i,tree: math.log10(closestJet(tree,tree.BToKmumu_kaon_eta[i],tree.BToKmumu_kaon_phi[i]))],
+    
+    ["k_djet",lambda i,tree: math.log10(closestJet(tree,tree.BToKmumu_kaon_eta[i],tree.BToKmumu_kaon_phi[i])+1e-10)],
+    
+    ["B_pt",lambda i,tree: math.log10(tree.BToKmumu_pt[i]+1e-10)],
+    ["B_eta",lambda i,tree: math.fabs(tree.BToKmumu_eta[i])],
+    
     ["alpha",lambda i,tree: math.acos(max(min(tree.BToKmumu_cosAlpha[i],-1.),1.))], #angle between B and (SV-PV)
     ["Lxy",lambda i,tree: math.log10(tree.BToKmumu_Lxy[i]+1e-10)], #significance of displacement
-    ["ctxy",lambda i,tree: math.log10(tree.BToKmumu_ctxy[i]+1e-10)], #significance of displacement
-    ["vtx_CL",lambda i,tree: math.log10(tree.BToKmumu_CL_vtx[i])]
+    ["ctxy",lambda i,tree: math.log10(tree.BToKmumu_ctxy[i]+1e-10)],
+    ["vtx_CL",lambda i,tree: math.log10(tree.BToKmumu_CL_vtx[i]+1e-10)]
 ]
 
 scales = [
@@ -76,19 +88,22 @@ def baseSelection(tree,isSignal):
     #an additional tag muon
     if (tree.Muon_sel_index<0):
         return False
+        
+    if (tree.BToKmumu_sel_index<0):
+        return False
     
     #signal defined to be fully matched to gen (no product missing after reconstruction)
-    if (isSignal and tree.BToKmumu_gen_index<0):
-        return False
+    #if (isSignal and tree.BToKmumu_gen_index<0):
+    #    return False
         
     #both 
-    if (tree.BToKmumu_kaon_pt[tree.BToKmumu_sel_index]<=1. and math.fabs(tree.BToKmumu_kaon_eta[tree.BToKmumu_sel_index])>=2.4):
+    if (tree.BToKmumu_kaon_pt[tree.BToKmumu_sel_index]<=1. or math.fabs(tree.BToKmumu_kaon_eta[tree.BToKmumu_sel_index])>=2.4):
         return False
         
-    if (tree.BToKmumu_mu1_pt[tree.BToKmumu_sel_index]<=1. and math.fabs(tree.BToKmumu_mu1_pt[tree.BToKmumu_sel_index])>=2.4):
+    if (tree.BToKmumu_mu1_pt[tree.BToKmumu_sel_index]<=1. or math.fabs(tree.BToKmumu_mu1_pt[tree.BToKmumu_sel_index])>=2.4):
         return False
         
-    if (tree.BToKmumu_mu2_pt[tree.BToKmumu_sel_index]<=1. and math.fabs(tree.BToKmumu_mu2_pt[tree.BToKmumu_sel_index])>=2.4):
+    if (tree.BToKmumu_mu2_pt[tree.BToKmumu_sel_index]<=1. or math.fabs(tree.BToKmumu_mu2_pt[tree.BToKmumu_sel_index])>=2.4):
         return False
         
     #veto B mass window for background to reject signal in data
@@ -110,11 +125,11 @@ def writeEvent(tree,index,writer,isSignal=False):
         #select a significance of at least 0.1% (note: this is calculated from chi2 of fit; =0 occurs through numerical precision)
         if (tree.BToKmumu_CL_vtx[icombination]<0.001):
             continue
-        if (tree.BToKmumu_mu1_pt[icombination]<1.):
+        if (tree.BToKmumu_mu1_pt[icombination]<1. or math.fabs(tree.BToKmumu_mu1_eta[tree.BToKmumu_sel_index])>=2.4):
             continue
-        if (tree.BToKmumu_mu2_pt[icombination]<1.):
+        if (tree.BToKmumu_mu2_pt[icombination]<1. or math.fabs(tree.BToKmumu_mu2_eta[tree.BToKmumu_sel_index])>=2.4):
             continue
-        if (tree.BToKmumu_kaon_pt[icombination]<1.):
+        if (tree.BToKmumu_kaon_pt[icombination]<1. or math.fabs(tree.BToKmumu_kaon_eta[tree.BToKmumu_sel_index])>=2.4):
             continue
         massVtxCLIndex.append([tree.BToKmumu_CL_vtx[icombination],tree.BToKmumu_mass[icombination],icombination])
         selectedCombinations.append(icombination)
@@ -173,7 +188,7 @@ def writeEvent(tree,index,writer,isSignal=False):
     
     return True
 
-def convert(outputFolder,signalChain,backgroundChain,repeatSignal=10,nBatch=1,batch=0,testFractionSignal=0.3,testFractionBackground=0.7,skipBackground=500):
+def convert(outputFolder,signalChain,backgroundChain,repeatSignal=100,nBatch=1,batch=0,testFractionSignal=0.3,testFractionBackground=0.8,skipBackground=500):
     '''
     if os.path.exists(rootFileName+".tfrecord.uncompressed"):
         logging.info("exists ... "+rootFileName+".tfrecord.uncompressed -> skip")
@@ -186,8 +201,8 @@ def convert(outputFolder,signalChain,backgroundChain,repeatSignal=10,nBatch=1,ba
     nSignal = signalChain.GetEntries()
     nBackground = int(1.*backgroundChain.GetEntries()/skipBackground)
     
-    print "Input signal: ",nSignal
-    print "Input background: ",nBackground
+    print "Input signal (total): ",nSignal
+    print "Input background (total): ",nBackground
    
     signalEntry = 0
     backgroundEntry = 0
@@ -198,24 +213,33 @@ def convert(outputFolder,signalChain,backgroundChain,repeatSignal=10,nBatch=1,ba
     nSignalWrittenTest = 0
     nBackgroundWrittenTest = 0
     
+    nSignalBatch = int(round(1.*nSignal*repeatSignal/nBatch))
+    nBackgroundBatch = int(round(1.*nBackground/nBatch))
     
-    for globalEntry in range(nSignal*repeatSignal+nBackground):
-        if globalEntry%(50*nBatch)==0:
-            print "processed: %.3f, written: %i/%i (%i/%i) signal/background"%(100.*globalEntry/(nSignal*repeatSignal+nBackground),nSignalWrittenTrain,nBackgroundWrittenTrain,nSignalWrittenTest,nBackgroundWrittenTest)
+    print "Input signal batch (total): ",nSignalBatch
+    print "Input background batch (total): ",nBackgroundBatch
+    
+    for globalEntry in range(nSignalBatch+nBackgroundBatch):
+        if globalEntry%500==0:
+            print "processed: %.3f, written: train=%i/%i, test=%i/%i, preselection eff: %.1f%%/%.1f%% signal/background"%(
+                100.*globalEntry/(nSignalBatch+nBackgroundBatch),
+                nSignalWrittenTrain,nBackgroundWrittenTrain,
+                nSignalWrittenTest,nBackgroundWrittenTest,
+                100.*(nSignalWrittenTrain+nSignalWrittenTest)/signalEntry if signalEntry>0 else 0.,
+                100.*(nBackgroundWrittenTrain+nBackgroundWrittenTest)/backgroundEntry if backgroundEntry>0 else 0.,
+            )
         
         #pseudo randomly choose signal or background
-        h = myHash(globalEntry)
-        itree = (h+h/(nSignal*repeatSignal+nBackground))%(nSignal*repeatSignal+nBackground)
+        h = myHash(globalEntry*23+batch*7)
+        itree = (h+h/(nSignalBatch+nBackgroundBatch))%(nSignalBatch+nBackgroundBatch)
         
-        if (itree<(nSignal*repeatSignal)):
+        if (itree<(nSignalBatch)):
             signalEntry+=1
+            signalEvent = (nSignalBatch*batch+signalEntry)%nSignal
             #choose train/test depending on event number only! => works even if trees are repeated 
-            hSignal = myHash(signalEntry%nSignal)
+            hSignal = myHash(signalEvent)
             hSignal = (hSignal+hSignal/1000)%1000
-            #skip if not for current batch
-            if (globalEntry%nBatch!=batch):
-                continue
-            signalChain.GetEntry(signalEntry%nSignal)
+            signalChain.GetEntry(signalEvent)
             if (hSignal>testFractionSignal*1000):
                 if (writeEvent(signalChain,nSignalWrittenTrain+nBackgroundWrittenTrain,writerTrain,isSignal=True)):
                     nSignalWrittenTrain+=1
@@ -226,13 +250,11 @@ def convert(outputFolder,signalChain,backgroundChain,repeatSignal=10,nBatch=1,ba
         else:
             
             backgroundEntry+=1
+            backgroundEvent = (nBackgroundBatch*batch+backgroundEntry)%nBackground
             #choose train/test depending on event number only! => works even if trees are repeated 
-            hBackground = myHash(backgroundEntry%nBackground)
+            hBackground = myHash(backgroundEvent)
             hBackground = (hBackground+hBackground/1000)%1000
-            #skip if not for current batch
-            if (globalEntry%nBatch!=batch):
-                continue
-            backgroundChain.GetEntry(backgroundEntry%nBackground)
+            backgroundChain.GetEntry(backgroundEvent)
             
             if (hBackground>testFractionBackground*1000):
                 if (writeEvent(backgroundChain,nSignalWrittenTrain+nBackgroundWrittenTrain,writerTrain,isSignal=False)):
@@ -246,14 +268,6 @@ def convert(outputFolder,signalChain,backgroundChain,repeatSignal=10,nBatch=1,ba
     
     print "Total signal written: %i/%i/%i total/train/test, test frac: %.3f"%(nSignal,nSignalWrittenTrain,nSignalWrittenTest,100.*nSignalWrittenTest/(nSignalWrittenTest+nSignalWrittenTrain))
     print "Total background written: %i/%i/%i total/train/test, test frac: %.3f"%(nBackground,nBackgroundWrittenTrain,nBackgroundWrittenTest,100.*nBackgroundWrittenTest/(nBackgroundWrittenTest+nBackgroundWrittenTrain))
-
-
-#backgroundChain.Add("/vols/cms/tstreble/BPH/BToKmumu_ntuple/BPHParking1_2018B_18_08_14_new/BToKmumuNtuple*.root")
-#backgroundChain.Add("/vols/cms/tstreble/BPH/BToKmumu_ntuple/BPHParking2_2018B_18_08_14_new/BToKmumuNtuple*.root")
-#backgroundChain.Add("/vols/cms/tstreble/BPH/BToKmumu_ntuple/BPHParking3_2018B_18_08_14_new/BToKmumuNtuple*.root")
-#backgroundChain.Add("/vols/cms/tstreble/BPH/BToKmumu_ntuple/BPHParking4_2018B_18_08_14_new/BToKmumuNtuple*.root")
-#backgroundChain.Add("/vols/cms/tstreble/BPH/BToKmumu_ntuple/BPHParking5_2018B_18_08_14_new/BToKmumuNtuple*.root")
-#backgroundChain.Add("/vols/cms/tstreble/BPH/BToKmumu_ntuple/BPHParking6_2018B_18_08_14_new/BToKmumuNtuple*.root")
 
 
 import argparse
@@ -277,8 +291,19 @@ backgroundList = [
     "/vols/cms/tstreble/BPH/BToKmumu_ntuple/BPHParking4_2018A_18_08_14_new/BToKmumuNtuple*.root",
     "/vols/cms/tstreble/BPH/BToKmumu_ntuple/BPHParking5_2018A_18_08_14_new/BToKmumuNtuple*.root",
     "/vols/cms/tstreble/BPH/BToKmumu_ntuple/BPHParking6_2018A_18_08_14_new/BToKmumuNtuple*.root",
+    
+    "/vols/cms/tstreble/BPH/BToKmumu_ntuple/BPHParking1_2018B_18_08_14_new/BToKmumuNtuple*.root",
+    "/vols/cms/tstreble/BPH/BToKmumu_ntuple/BPHParking2_2018B_18_08_14_new/BToKmumuNtuple*.root",
+    "/vols/cms/tstreble/BPH/BToKmumu_ntuple/BPHParking3_2018B_18_08_14_new/BToKmumuNtuple*.root",
+    "/vols/cms/tstreble/BPH/BToKmumu_ntuple/BPHParking4_2018B_18_08_14_new/BToKmumuNtuple*.root",
+    "/vols/cms/tstreble/BPH/BToKmumu_ntuple/BPHParking5_2018B_18_08_14_new/BToKmumuNtuple*.root",
+    "/vols/cms/tstreble/BPH/BToKmumu_ntuple/BPHParking6_2018B_18_08_14_new/BToKmumuNtuple*.root",
 ]
-backgroundChain.Add(backgroundList[args.b%len(backgroundList)])
+
+backgroundChain.Add("/vols/cms/tstreble/BPH/BToKmumu_ntuple/BPHParking1_2018A_18_08_14_new/BToKmumuNtuple*.root")
+backgroundChain.Add("/vols/cms/tstreble/BPH/BToKmumu_ntuple/BPHParking2_2018A_18_08_14_new/BToKmumuNtuple*.root")
+backgroundChain.Add("/vols/cms/tstreble/BPH/BToKmumu_ntuple/BPHParking3_2018A_18_08_14_new/BToKmumuNtuple*.root")
+backgroundChain.Add("/vols/cms/tstreble/BPH/BToKmumu_ntuple/BPHParking4_2018A_18_08_14_new/BToKmumuNtuple*.root")
 
 convert(args.output,signalChain,backgroundChain,nBatch=args.n,batch=args.b,skipBackground=1)
 

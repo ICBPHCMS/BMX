@@ -537,12 +537,12 @@ outputDiscriminantList = []
 #outputBestCombinationList = []
 #outputScalesList = []
 
-batchSize = 150
+batchSize = 50
 
 for i in range(batchSize):
     if (i+1)%10==0:
         print "allocating network %i/%i"%(i+1,batchSize)
-    inputs = keras.layers.Input(batch_shape=(1,None,22))
+    inputs = keras.layers.Input(batch_shape=(1,None,24))
     prediction = net.getDiscriminant(inputs)
     #bestComb = net.predictBestCombination(inputs)
     #outputBestCombinationList.append(bestComb)
@@ -655,7 +655,7 @@ for epoch in range(1,51):
             print "Training step %i-%i: loss=%.4f, acc=%.3f%%, accSignal=%.3f%%"%(
                 epoch,stepTrain,loss,
                 100.*nAccTrain/stepTrain/batchSize,
-                100.*nAccSignalTrain/nSignalTrain,
+                100.*nAccSignalTrain/nSignalTrain if nSignalTrain>0 else 0,
             )
 
 
@@ -715,7 +715,7 @@ for epoch in range(1,51):
             print "Testing step %i-%i: loss=%.4f, acc=%.3f%%, accSignal=%.3f%%"%(
                 epoch,stepTest,loss,
                 100.*nAccTest/stepTest/batchSize,
-                100.*nAccSignalTest/nSignalTest,
+                100.*nAccSignalTest/nSignalTest if nSignalTest>0 else 0,
             )
            
             
