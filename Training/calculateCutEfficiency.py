@@ -4,8 +4,97 @@ import os
 import time
 import numpy
 import math
+import re
+import uproot
 
-def baseSelection(tree,isSignal):
+class Chain(object):
+    def __init__(self,fileList):
+        self._fileList = fileList
+        self._nEvents = []
+        self._sumEvents = 0
+        self._currentFile = None
+        self._currentTree = None
+        self._currentEntry = None
+        self._currentOffset = None
+        self._buffer = {}
+        for i,f in enumerate(self._fileList[:]):
+            try:
+                print i,'/',len(self._fileList),'...',f
+                rootFile = uproot.open(f)
+                tree = rootFile["Events"]
+                nevents = len(tree)
+                self._sumEvents += nevents
+                self._nEvents.append(nevents)
+            except:
+                print "Error - cannot open file: ",f
+                self._fileList.remove(f)
+            
+    def GetEntries(self):
+        return self._sumEvents
+            
+    def GetEntry(self,i):
+        if self._currentTree!=None and (i-self._currentOffset)<len(self._currentTree) and (i-self._currentOffset)>=0:
+            self._currentEntry = i-self._currentOffset
+        else:
+            del self._currentTree
+            self._currentTree = None
+            del self._buffer
+            self._buffer = {}
+            s = 0
+            i = i%self._sumEvents #loop
+            for e in range(len(self._nEvents)):
+                if s<=i and (s+self._nEvents[e])>i:
+                    print "opening",self._fileList[e]
+                    self._currentFile = uproot.open(self._fileList[e])
+                    self._currentTree = self._currentFile["Events"]
+                    self._currentOffset = s
+                    self._currentEntry = i-self._currentOffset
+                    break
+                s+=self._nEvents[e]
+                    
+    def __getattr__(self,k):
+        if not self._buffer.has_key(k):
+            self._buffer[k] = self._currentTree[k].array()
+            #print "loading branch ",k," with entries ",len(self._buffer[k])," and shape ",self._buffer[k][self._currentEntry].shape,", (tree len=",len(self._currentTree),")"
+        if self._currentEntry>=len(self._buffer[k]):
+            print "Error - buffer for branch '",k,"' only ",len(self._buffer[k])," but requested entry ",self._currentEntry," (tree len=",len(self._currentTree),")"
+            return 0
+        return self._buffer[k][self._currentEntry]
+
+
+def combinationSelectionMu(tree,icombination):
+        
+    if (tree.BToKmumu_kaon_pt[icombination]<=1. or math.fabs(tree.BToKmumu_kaon_eta[icombination])>=2.4):
+        return False
+        
+    if (tree.BToKmumu_mu1_pt[icombination]<=1. or math.fabs(tree.BToKmumu_mu1_eta[icombination])>=2.4):
+        return False
+        
+    if (tree.BToKmumu_mu2_pt[icombination]<=1. or math.fabs(tree.BToKmumu_mu2_eta[icombination])>=2.4):
+        return False
+        
+    if (tree.BToKmumu_mu1_charge[icombination]*tree.BToKmumu_mu2_charge[icombination]>0):
+        return False
+        
+    return True
+    
+def combinationSelectionEle(tree,icombination):
+        
+    if (tree.BToKee_kaon_pt[icombination]<=1. or math.fabs(tree.BToKee_kaon_eta[icombination])>=2.4):
+        return False
+        
+    if (tree.BToKee_ele1_pt[icombination]<=1. or math.fabs(tree.BToKee_ele1_eta[icombination])>=2.4):
+        return False
+        
+    if (tree.BToKee_ele2_pt[icombination]<=1. or math.fabs(tree.BToKee_ele2_eta[icombination])>=2.4):
+        return False
+        
+    if (tree.BToKee_ele1_charge[icombination]*tree.BToKee_ele2_charge[icombination]>0):
+        return False
+        
+    return True
+
+def baseSelectionMu(tree,isSignal):
     #at least one b hypothesis
     if (tree.nBToKmumu==0):
         return False
@@ -18,28 +107,45 @@ def baseSelection(tree,isSignal):
         return False
     
     #signal defined to be fully matched to gen (no product missing after reconstruction)
-    #if (isSignal and tree.BToKmumu_gen_index<0):
-    #    return False
-        
-    if (tree.BToKmumu_kaon_pt[tree.BToKmumu_sel_index]<=1. or math.fabs(tree.BToKmumu_kaon_eta[tree.BToKmumu_sel_index])>=2.4):
+    if (isSignal and tree.BToKmumu_gen_index<0):
         return False
         
-    if (tree.BToKmumu_mu1_pt[tree.BToKmumu_sel_index]<=1. or math.fabs(tree.BToKmumu_mu1_pt[tree.BToKmumu_sel_index])>=2.4):
-        return False
-        
-    if (tree.BToKmumu_mu2_pt[tree.BToKmumu_sel_index]<=1. or math.fabs(tree.BToKmumu_mu2_pt[tree.BToKmumu_sel_index])>=2.4):
-        return False
-        
-    if (tree.BToKmumu_mu1_charge[tree.BToKmumu_sel_index]*tree.BToKmumu_mu2_charge[tree.BToKmumu_sel_index]>0):
+    if (not combinationSelectionMu(tree,tree.BToKmumu_sel_index)):
         return False
         
     #veto B mass window for background to reject signal in data
     if (not isSignal and tree.BToKmumu_mass[tree.BToKmumu_sel_index]<5.6):
         return False
-    
+        
     return True
     
-def signalSelection(tree,isSignal):
+    
+def baseSelectionEle(tree,isSignal):
+    #at least one b hypothesis
+    if (tree.nBToKee==0):
+        return False
+    
+    #an additional tag muon
+    if (tree.Muon_sel_index<0):
+        return False
+        
+    if (tree.BToKee_sel_index<0):
+        return False
+    
+    #signal defined to be fully matched to gen (no product missing after reconstruction)
+    if (isSignal and tree.BToKee_gen_index<0):
+        return False
+        
+    if (not combinationSelectionEle(tree,tree.BToKee_sel_index)):
+        return False
+        
+    #veto B mass window for background to reject signal in data
+    if (not isSignal and tree.BToKee_mass[tree.BToKee_sel_index]<5.6):
+        return False
+        
+    return True
+    
+def signalSelectionMu(tree,isSignal):
     if (tree.BToKmumu_CL_vtx[tree.BToKmumu_sel_index]<=0.1):
         return False
     if (tree.BToKmumu_cosAlpha[tree.BToKmumu_sel_index]<=0.999):
@@ -52,13 +158,31 @@ def signalSelection(tree,isSignal):
         return False
         
     return True
+    
+def signalSelectionEle(tree,isSignal):
+    if (tree.BToKee_CL_vtx[tree.BToKee_sel_index]<=0.1):
+        return False
+    if (tree.BToKee_cosAlpha[tree.BToKee_sel_index]<=0.999):
+        return False
+    if (tree.BToKee_Lxy[tree.BToKee_sel_index]<=6):
+        return False
+    if (tree.BToKee_pt[tree.BToKee_sel_index]<=10.):
+        return False
+    if (tree.BToKee_kaon_pt[tree.BToKee_sel_index]<=1.5):
+        return False
+        
+    return True
+    
 
-def calculateEfficiency(chain,baseSelection,signalSelection,isSignal=False):
+def calculateEfficiency(chain,baseSelection,signalSelection,combinationSelection,nCombinations,combinationCLVtx,genCombination,isSignal=False):
 
     nEvents = min(5000000,chain.GetEntries())
     
     nPassBaseSelection = 0
     nPassSignalSelection = 0
+    
+    if isSignal:
+        combIndexDict = {}
     
     for ientry in range(nEvents):
         if ientry%1000==0:
@@ -67,15 +191,43 @@ def calculateEfficiency(chain,baseSelection,signalSelection,isSignal=False):
         if not baseSelection(chain,isSignal):
             continue
         nPassBaseSelection+=1
+        
+        if isSignal:
+            selectedCombIndicesCLvtxPairs = []
+            
+            for icomb in range(nCombinations(chain)):
+                if (combinationSelection(chain,icomb)):
+                    #if (chain.BToKmumu_CL_vtx[icomb]<0.001):
+                    #    continue
+                    selectedCombIndicesCLvtxPairs.append([icomb,combinationCLVtx(chain,icomb)])
+            selectedCombIndicesCLvtxPairsSorted = sorted(selectedCombIndicesCLvtxPairs,key=lambda elem: -elem[1])
+            selectedCombIndicesSorted = map(lambda x:x[0],selectedCombIndicesCLvtxPairsSorted)
+            genIndex = -1
+            for icombSorted,icombIndex in enumerate(selectedCombIndicesSorted):
+                if icombIndex==int(genCombination(chain)):
+                    genIndex = icombSorted
+                    break
+            if not combIndexDict.has_key(genIndex):
+                combIndexDict[genIndex] = 0
+            combIndexDict[genIndex]+=1
+        
         if signalSelection(chain,isSignal):
             nPassSignalSelection+=1
+            
+    if isSignal:
+        culum = 0
+        s = sum(combIndexDict.values())
+        for icomb in sorted(combIndexDict.keys()):
+            if icomb==-1:
+                continue
+            culum+=combIndexDict[icomb]
+            print icomb,1.*culum/s
     return nEvents,nPassBaseSelection,nPassSignalSelection
     
    
     
     
-signalChain = ROOT.TChain("Events")
-signalChain.Add("/vols/cms/tstreble/BPH/BToKmumu_ntuple/BToKmumu_18_08_14_new/*.root")
+
 
 backgroundChain = ROOT.TChain("Events")
 backgroundChain.Add("/vols/cms/tstreble/BPH/BToKmumu_ntuple/BPHParking1_2018A_18_08_14_new/BToKmumuNtuple*.root")
@@ -93,13 +245,48 @@ backgroundChain.Add("/vols/cms/tstreble/BPH/BToKmumu_ntuple/BPHParking1_2018A_18
 #backgroundChain.Add("/vols/cms/tstreble/BPH/BToKmumu_ntuple/BPHParking6_2018B_18_08_14_new/BToKmumuNtuple*.root")
 
 
+signalFilesMu = []
+for f in os.listdir("/vols/cms/tstreble/BPH/BToKmumu_ntuple/BToKmumu_18_08_14_new/"):
+    if re.match("BToKmumuNtuple\w+.root",f):
+        fullFilePath = os.path.join("/vols/cms/tstreble/BPH/BToKmumu_ntuple/BToKmumu_18_08_14_new/",f)
+        signalFilesMu.append(fullFilePath)
+        
+signalChainMu = Chain(signalFilesMu[0:20])
+
 nEvents,nPassBaseSelection,nPassSignalSelection = calculateEfficiency(
-    signalChain,
-    baseSelection=baseSelection,
-    signalSelection=signalSelection,
+    signalChainMu,
+    baseSelection=baseSelectionMu,
+    signalSelection=signalSelectionMu,
+    combinationSelection=combinationSelectionMu,
+    nCombinations = lambda tree:tree.nBToKmumu,
+    combinationCLVtx = lambda tree,i:tree.BToKmumu_CL_vtx[i],
+    genCombination = lambda tree:tree.BToKmumu_gen_index,
     isSignal=True
 )
-print "signal",nEvents,nPassBaseSelection,nPassSignalSelection,100.*nPassBaseSelection/nEvents,"%",100.*nPassSignalSelection/nPassBaseSelection,"%"
+print "signal mu",nEvents,nPassBaseSelection,nPassSignalSelection,100.*nPassBaseSelection/nEvents,"%",100.*nPassSignalSelection/nPassBaseSelection,"%"
+
+
+signalFilesEle = []
+for f in os.listdir("/vols/cms/tstreble/BPH/BToKee_ntuple/BToKee_18_09_07_elechargefix/"):
+    if re.match("BToKeeNtuple\w+.root",f):
+        fullFilePath = os.path.join("/vols/cms/tstreble/BPH/BToKee_ntuple/BToKee_18_09_07_elechargefix",f)
+        signalFilesEle.append(fullFilePath)
+signalChainEle = Chain(signalFilesEle)
+
+
+nEvents,nPassBaseSelection,nPassSignalSelection = calculateEfficiency(
+    signalChainEle,
+    baseSelection=baseSelectionEle,
+    signalSelection=signalSelectionEle,
+    combinationSelection=combinationSelectionEle,
+    nCombinations = lambda tree:tree.nBToKee,
+    combinationCLVtx = lambda tree,i:tree.BToKee_CL_vtx[i],
+    genCombination = lambda tree:tree.BToKee_gen_index,
+    isSignal=True
+)
+print "signal ele",nEvents,nPassBaseSelection,nPassSignalSelection,100.*nPassBaseSelection/nEvents,"%",100.*nPassSignalSelection/nPassBaseSelection,"%"
+
+
 '''
 nEvents,nPassBaseSelection,nPassSignalSelection = calculateEfficiency(
     backgroundChain,

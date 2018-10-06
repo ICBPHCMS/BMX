@@ -8,6 +8,7 @@ import random
 import ROOT
 import re
 import os
+import sys
 
 from sklearn import metrics
 
@@ -59,162 +60,121 @@ ROOT.gStyle.SetLineScalePS(2)
 
 ROOT.gStyle.SetPaintTextFormat("3.0f")
 
-class Generator:
-    def __init__(self, fileList):
-        self.fileList = fileList
-        
-        self.data = []
-     
-        self.nSignal = 0
-        self.nBackground = 0
-     
-        for f in self.fileList:
-            with h5py.File(f, 'r') as hf:
-                keys = hf.keys()
-                for index in keys:
-                    truthArray = numpy.array(hf[index]["truth"])
-                    if truthArray[0]>0.5:
-                        self.nSignal+=1
-                    else:
-                        self.nBackground+=1
+                               
+def readFileMultiEntryAhead(filenameQueue, nBatches=200):
+    reader = tf.TFRecordReader(options=tf.python_io.TFRecordOptions(tf.python_io.TFRecordCompressionType.GZIP))
+    key, rawDataBatch = reader.read_up_to(filenameQueue,nBatches) 
+    #key is just a dataset identifier set by the reader
+    #rawData is of type string
+    
+    ncombinations = 200
+    nfeatures = 24
+    nscales = 2
+    featureList = {
+        'truth': tf.FixedLenFeature([1], tf.float32),
+        'features': tf.FixedLenFeature([ncombinations*nfeatures], tf.float32),
+        'genIndex': tf.FixedLenFeature([ncombinations+1], tf.float32),
+        'scales': tf.FixedLenFeature([ncombinations*nscales], tf.float32),
+    }
+    
+    parsedDataBatch = tf.parse_example(rawDataBatch, features=featureList)
+    
+    parsedDataBatch['features']=tf.reshape(parsedDataBatch['features'],[-1,ncombinations,nfeatures])
+    parsedDataBatch['scales']=tf.reshape(parsedDataBatch['scales'],[-1,ncombinations,nscales])
+    return parsedDataBatch
                         
-        self.SBratio = 1.*self.nSignal/self.nBackground
-        
-                    
+                        
+def input_pipeline(files, batchSize,repeat=1):
+    with tf.device('/cpu:0'):
+        fileListQueue = tf.train.string_input_producer(
+                files, num_epochs=repeat, shuffle=True)
 
-    def __call__(self,batchSize=1):
-        random.shuffle(self.fileList)
-             
-        truthList = []
-        weightList = []
-        featureList = []
-        scalesList = []
-        genIndexList = []
+        readers = []
+        maxThreads = 6
+        #if os.env.has_key('OMP_NUM_THREADS') and int(os.env['OMP_NUM_THREADS'])>0 and int(os.env['OMP_NUM_THREADS'])<maxThreads:
+        #    maxThreads = int(os.env['OMP_NUM_THREADS'])
+        for _ in range(min(1+int(len(files)/2.), maxThreads)):
+            reader_batch = max(10,int(batchSize/20.))
+            readers.append(readFileMultiEntryAhead(fileListQueue,reader_batch))
             
-        for f in self.fileList:
-            with h5py.File(f, 'r') as hf:
-                keys = hf.keys()
-                random.shuffle(keys)
-                for index in keys:
-                    truthArray = numpy.array(hf[index]["truth"])
-                    featureArray = numpy.array(hf[index]["features"])
-                    scaleArray = numpy.array(hf[index]["scales"])
-                    genIndexArray = numpy.array(hf[index]["genIndex"])
-                    if (not numpy.all(numpy.isfinite(truthArray))) or \
-                       (not numpy.all(numpy.isfinite(featureArray))) or \
-                       (not numpy.all(numpy.isfinite(scaleArray))) or \
-                       (not numpy.all(numpy.isfinite(genIndexArray))):
-                        continue
-
-                        
-                    weight = truthArray[:]
-                    weight = (1.-weight)*self.SBratio+weight
-                        
-                    truthList.append(numpy.expand_dims((truthArray),axis=0))
-                    weightList.append(weight)
-                    featureList.append(numpy.expand_dims((featureArray),axis=0))
-                    scalesList.append(numpy.expand_dims((scaleArray),axis=0))
-                    genIndexList.append(numpy.expand_dims((genIndexArray),axis=0))
-                    if len(truthList)==batchSize:
-                        batchDict = {
-                            "truth":truthList[:],
-                            "features":featureList[:],
-                            "weight":weightList[:],
-                            "scales":scalesList[:],
-                            "genIndex":genIndexList[:]
-                        }
-                        truthList = []
-                        weightList = []
-                        featureList = []
-                        scalesList = []
-                        genIndexList = []
-                        yield batchDict 
+        minAfterDequeue = batchSize * 2
+        capacity = minAfterDequeue + 3*batchSize
+        batch = tf.train.shuffle_batch_join(
+            readers,
+            batch_size=batchSize,
+            capacity=capacity,
+            min_after_dequeue=minAfterDequeue,
+            enqueue_many=True  # requires to read examples in batches!
+        )
+        
+        return batch
           
                     
 class Network:
     def __init__(self,regLoss=1e-6):
         self.convLayers = [
-            keras.layers.Conv1D(32, 1, strides=1, activation=keras.layers.LeakyReLU(alpha=0.1), 
+            keras.layers.Conv1D(32, 1, strides=1, activation=None,
                 kernel_regularizer=keras.regularizers.l2(regLoss)
             ),
+            keras.layers.LeakyReLU(alpha=0.1), 
             #drop same features (=filters) for all combinations
             keras.layers.Dropout(0.2,noise_shape=[1,1,32]),
-            keras.layers.Conv1D(12, 1, strides=1, activation='tanh', 
+            keras.layers.Conv1D(32, 1, strides=1, activation=None,
+                kernel_regularizer=keras.regularizers.l2(regLoss)
+            ),
+            keras.layers.LeakyReLU(alpha=0.1), 
+            #drop same features (=filters) for all combinations
+            keras.layers.Dropout(0.2,noise_shape=[1,1,32]),
+            keras.layers.Conv1D(16, 1, strides=1, activation='tanh', 
                 kernel_regularizer=keras.regularizers.l2(regLoss)
             ),
         ]
-        
+
         self.lstmLayers = [
             keras.layers.LSTM(50, activation='tanh', recurrent_activation='hard_sigmoid',
                 kernel_regularizer=keras.regularizers.l2(regLoss),
                 implementation=2,
+                recurrent_dropout=0.05,
                 go_backwards=True
             ),
             keras.layers.Dropout(0.1),
         ]
-        '''
-        self.lstmCombs = [
-            keras.layers.LSTM(
-                20, activation='tanh', recurrent_activation='hard_sigmoid',
-                kernel_regularizer=keras.regularizers.l2(regLoss),
-                implementation=2,
-                return_sequences = True,
-                go_backwards=True
-            ),
-            keras.layers.Dropout(0.1,noise_shape=[1,1,20]),
-            keras.layers.LSTM(
-                20, activation=None, recurrent_activation='hard_sigmoid',
-                kernel_regularizer=keras.regularizers.l2(regLoss),
-                implementation=2,
-                return_sequences = True,
-                go_backwards=False
-            ),
-            keras.layers.Dropout(0.1,noise_shape=[1,1,20]),
-            keras.layers.Conv1D(1, 1, strides=1, activation=None, 
-                kernel_regularizer=keras.regularizers.l2(regLoss)
-            ),
-        ]
-        '''
-        self.bypassLayers = [
-            keras.layers.Lambda(lambda l:l[:,0,:]),
+
+        self.bypassLayersLSTM = [
+            keras.layers.Lambda(lambda l:l[:,0:5,:]),
+            keras.layers.Flatten(),
             #drop complete bypass
             keras.layers.Dropout(0.8,noise_shape=[1,1]),
         ]
         
+        self.bypassLayersDense = [
+            keras.layers.Dropout(0.8,noise_shape=[1,1]),
+        ]
+        
         self.predictLayers = [
-            keras.layers.Dense(50, activation=keras.layers.LeakyReLU(alpha=0.1),
+            keras.layers.Dense(100, activation=None,
                 kernel_regularizer=keras.regularizers.l2(regLoss)
             ),
+            keras.layers.LeakyReLU(alpha=0.1),
             keras.layers.Dropout(0.2),
-            keras.layers.Dense(20, activation=keras.layers.LeakyReLU(alpha=0.1),
+            keras.layers.Dense(50, activation=None,
                 kernel_regularizer=keras.regularizers.l2(regLoss)
             ),
+            keras.layers.LeakyReLU(alpha=0.1),
+            keras.layers.Dropout(0.1),
+        ]
+        
+        self.finalLayers = [
+            keras.layers.Dense(100, activation=None,
+                kernel_regularizer=keras.regularizers.l2(regLoss)
+            ),
+            keras.layers.LeakyReLU(alpha=0.1),
             keras.layers.Dropout(0.1),
             keras.layers.Dense(1, activation='sigmoid',
                 kernel_regularizer=keras.regularizers.l2(regLoss)
             )
         ]
-        '''
-        self.scaleLayers = [
-            keras.layers.Conv1D(64, 1, strides=1, activation=keras.layers.LeakyReLU(alpha=0.1), 
-                kernel_regularizer=keras.regularizers.l2(regLoss)
-            ),
-            keras.layers.Conv1D(2, 1, strides=1, activation=None, 
-                kernel_regularizer=keras.regularizers.l2(regLoss)
-            ),
-        ]
-        
-        self.combConvLayers = [
-            keras.layers.Conv1D(32, 1, strides=1, activation=keras.layers.LeakyReLU(alpha=0.1), 
-                kernel_regularizer=keras.regularizers.l2(regLoss)
-            ),
-            #drop same features (=filters) for all combinations
-            keras.layers.Dropout(0.1,noise_shape=[1,1,32]),
-            keras.layers.Conv1D(12, 1, strides=1, activation=None, 
-                kernel_regularizer=keras.regularizers.l2(regLoss)
-            ),
-        ]
-        '''
+
     def getFeatures(self,x):
         conv = self.convLayers[0](x)
         for layer in self.convLayers[1:]:
@@ -222,18 +182,32 @@ class Network:
         return conv
 
     def getDiscriminant(self,x):
+    
         conv = self.getFeatures(x)
+ 
         lstm = self.lstmLayers[0](conv)
         for layer in self.lstmLayers[1:]:
             lstm = layer(lstm)
-        bypass = self.bypassLayers[0](conv)
-        for layer in self.bypassLayers[1:]:
-            bypass = layer(bypass)
-        features = keras.layers.Concatenate()([lstm,bypass])
+            
+        bypassLSTM = self.bypassLayersLSTM[0](conv)
+        for layer in self.bypassLayersLSTM[1:]:
+            bypassLSTM = layer(bypassLSTM)
+            
+        features = keras.layers.Concatenate()([lstm,bypassLSTM])
+        
         predict = self.predictLayers[0](features)
         for layer in self.predictLayers[1:]:
             predict = layer(predict)
-        return predict
+        
+        bypassDense = self.bypassLayersDense[0](features)
+        for layer in self.bypassLayersDense[1:]:
+            bypassDense = layer(bypassDense)
+        
+        final = keras.layers.Concatenate()([predict,bypassDense])
+        final = self.finalLayers[0](final)
+        for layer in self.finalLayers[1:]:
+            final = layer(final)
+        return final
         
     '''
     def predictBestCombination(self,x):
@@ -271,22 +245,26 @@ class NetworkDense:
         ]
         
         self.predictLayers = [
-            keras.layers.Dense(50, activation=keras.layers.LeakyReLU(alpha=0.1),
+            keras.layers.Dense(50, activation=None,
                 kernel_regularizer=keras.regularizers.l2(regLoss)
             ),
-            keras.layers.Dropout(0.2),
-            keras.layers.Dense(50, activation=keras.layers.LeakyReLU(alpha=0.1),
+            keras.layers.LeakyReLU(alpha=0.1),
+            keras.layers.Dropout(0.3),
+            keras.layers.Dense(30, activation=None,
                 kernel_regularizer=keras.regularizers.l2(regLoss)
             ),
-            keras.layers.Dropout(0.1),
-            keras.layers.Dense(50, activation=keras.layers.LeakyReLU(alpha=0.1),
+            keras.layers.LeakyReLU(alpha=0.1),
+            keras.layers.Dropout(0.3),
+            keras.layers.Dense(30, activation=None,
                 kernel_regularizer=keras.regularizers.l2(regLoss)
             ),
-            keras.layers.Dropout(0.1),
-            keras.layers.Dense(50, activation=keras.layers.LeakyReLU(alpha=0.1),
+            keras.layers.LeakyReLU(alpha=0.1),
+            keras.layers.Dropout(0.3),
+            keras.layers.Dense(30, activation=None,
                 kernel_regularizer=keras.regularizers.l2(regLoss)
             ),
-            keras.layers.Dropout(0.1),
+            keras.layers.LeakyReLU(alpha=0.1),
+            keras.layers.Dropout(0.3),
             keras.layers.Dense(1, activation='sigmoid',
                 kernel_regularizer=keras.regularizers.l2(regLoss)
             )
@@ -301,7 +279,85 @@ class NetworkDense:
         for layer in self.predictLayers[1:]:
             predict = layer(predict)
         return predict
-
+        
+class NetworkFullDense:
+    def __init__(self,regLoss=1e-6):
+        self.convLayers = [
+            keras.layers.Conv1D(32, 1, strides=1, activation=None,
+                kernel_regularizer=keras.regularizers.l2(regLoss)
+            ),
+            keras.layers.LeakyReLU(alpha=0.1), 
+            #drop same features (=filters) for all combinations
+            keras.layers.Dropout(0.2,noise_shape=[1,1,32]),
+            keras.layers.Conv1D(32, 1, strides=1, activation=None,
+                kernel_regularizer=keras.regularizers.l2(regLoss)
+            ),
+            keras.layers.LeakyReLU(alpha=0.1), 
+            #drop same features (=filters) for all combinations
+            keras.layers.Dropout(0.2,noise_shape=[1,1,32]),
+            keras.layers.Conv1D(16, 1, strides=1, activation='tanh', 
+                kernel_regularizer=keras.regularizers.l2(regLoss)
+            ),
+        ]
+        
+        self.predictLayers = [
+            keras.layers.Dense(200, activation=None,
+                kernel_regularizer=keras.regularizers.l2(regLoss)
+            ),
+            keras.layers.LeakyReLU(alpha=0.1),
+            keras.layers.Dropout(0.2),
+            keras.layers.Dense(100, activation=None,
+                kernel_regularizer=keras.regularizers.l2(regLoss)
+            ),
+            keras.layers.LeakyReLU(alpha=0.1),
+            keras.layers.Dropout(0.1),
+            keras.layers.Dense(50, activation=None,
+                kernel_regularizer=keras.regularizers.l2(regLoss)
+            ),
+            keras.layers.LeakyReLU(alpha=0.1),
+            keras.layers.Dropout(0.1),
+            keras.layers.Dense(50, activation=None,
+                kernel_regularizer=keras.regularizers.l2(regLoss)
+            ),
+            keras.layers.LeakyReLU(alpha=0.1),
+            keras.layers.Dropout(0.1),
+            keras.layers.Dense(1, activation='sigmoid',
+                kernel_regularizer=keras.regularizers.l2(regLoss)
+            )
+        ]
+        
+    
+    def getDiscriminant(self,x):
+        conv = self.convLayers[0](x)
+        for layer in self.convLayers[1:]:
+            conv = layer(conv)
+        predict = keras.layers.Flatten()(conv)
+        predict = self.predictLayers[0](predict)
+        for layer in self.predictLayers[1:]:
+            predict = layer(predict)
+        return predict
+        
+'''
+def getROCErrors(truthTest, scoreTest,bag=20):
+    
+    bgEffDist = numpy.zeros((len(bgEff),bag))
+    for n in range(bag):
+        subIndices = numpy.multiply((numpy.random.uniform(0,1,len(sigEff))>0.5)*2-1,numpy.linspace(0,len(sigEff)-1,len(sigEff),dtype=numpy.int32))
+        sigEffSub = sigEff[numpy.extract(subIndices>=0,subIndices)]
+        bgEffSub = bgEff[numpy.extract(subIndices>=0,subIndices)]
+        
+        bgEff,sigEff,thres = metrics.roc_curve(truthTest, scoreTest)
+        
+        g = ROOT.TGraph(len(sigEffSub),sigEffSub,bgEffSub)
+        #g.SetBit(ROOT.TGraph.kIsSortedX)
+        bgEffAlt = numpy.zeros(len(bgEff))
+        for i in range(len(bgEff)):
+            bgEffDist[i][n]=g.Eval(sigEff[i])
+    bgMean = numpy.mean(bgEffDist,axis=1)
+    bgErr = numpy.std(bgEffDist,axis=1)
+    
+    return bgMean,bgErr
+'''
 
 def drawROC(name,sigEff,bgEff,signalName="Signal",backgroundName="Background",auc=None,style=1):
     cv = ROOT.TCanvas("cv_roc"+str(random.random()),"",800,700)
@@ -345,6 +401,8 @@ def drawROC(name,sigEff,bgEff,signalName="Signal",backgroundName="Background",au
     axis.GetYaxis().SetTickLength(0.015/(1-cv.GetTopMargin()-cv.GetBottomMargin()))
     #axis.GetYaxis().SetNoExponent(True)
     axis.Draw("AXIS")
+    
+    #bgMean, bgErr = getROCErrors(sigEff,bgEff)
 
     #### draw here
     graphF = ROOT.TGraph(len(sigEff),numpy.array(sigEff),numpy.array(bgEff))
@@ -352,11 +410,11 @@ def drawROC(name,sigEff,bgEff,signalName="Signal",backgroundName="Background",au
     graphF.SetFillColor(ROOT.kOrange+10)
     #graphF.Draw("SameF")
 
-    graphL = ROOT.TGraph(len(sigEff),numpy.array(sigEff),numpy.array(bgEff))
+    graphL = ROOT.TGraphErrors(len(sigEff),numpy.array(sigEff),numpy.array(bgEff))
     graphL.SetLineColor(ROOT.kOrange+7)
     graphL.SetLineWidth(3)
     graphL.SetLineStyle(style)
-    graphL.Draw("SameL")
+    graphL.Draw("SameLE")
 
     ROOT.gPad.RedrawAxis()
     
@@ -446,7 +504,7 @@ def drawDist(name,signalHists,backgroundHists):
     ymax = max(map(lambda h: h.GetMaximum(),signalHists+backgroundHists))
 
     axis=ROOT.TH2F("axis" + str(random.random()),";NN discriminant;Normalized events", 
-        50, 0, 1.0, 50, 0.06, math.exp(1.1*math.log(ymax))
+        50, 0, 1.0, 50, 0.0006, math.exp(1.1*math.log(ymax))
     )
     axis.GetYaxis().SetNdivisions(508)
     axis.GetXaxis().SetNdivisions(508)
@@ -502,77 +560,60 @@ def drawDist(name,signalHists,backgroundHists):
     cv.Print(name+".root")
         
         
-basepath = "/vols/cms/mkomm/BPH/training/"
+basepath = "/vols/cms/mkomm/BPH/training4/"
 
 trainFiles = []
 testFiles = []
 
 for l in os.listdir(basepath):
     filePath = os.path.join(basepath,l)
-    if re.match("train_\w+.hdf5",l):
-        try:
-            f = h5py.File(filePath, 'r')
-            trainFiles.append(filePath)
-            f.close()
-        except Exception,e:
-            print "cannot open file",filePath," -> skip"
+    if re.match("train_\w+.tfrecord",l):
+        trainFiles.append(filePath)
+
             
-    if re.match("test_\w+.hdf5",l):
-        try:
-            f = h5py.File(filePath, 'r')
-            testFiles.append(filePath)
-            f.close()
-        except Exception,e:
-            print "cannot open file",filePath," -> skip"
+    if re.match("test_\w+.tfrecord",l):
+        testFiles.append(filePath)
+         
         
-#trainFiles = trainFiles[0:5]
-#testFiles = testFiles[0:5]
+#trainFiles = trainFiles[0:1]
+#testFiles = testFiles[0:1]
+
         
 print "found ",len(trainFiles),"/",len(testFiles)," train/test files"
 #sys.exit(1)
-#net = Network()
-net = NetworkDense()
-                   
-inputList = []
-outputDiscriminantList = []
-#outputBestCombinationList = []
-#outputScalesList = []
 
-batchSize = 200
 
-for i in range(batchSize):
-    if (i+1)%10==0:
-        print "allocating network %i/%i"%(i+1,batchSize)
-    inputs = keras.layers.Input(batch_shape=(1,None,24))
+batchSizeTrain = 2000
+batchSizeTest = 10000
+
+
+def setup_model(learning_rate):
+    net = Network()
+    #net = NetworkDense()
+    #net = NetworkFullDense()
+
+
+    inputs = keras.layers.Input(shape=(200,24))
     prediction = net.getDiscriminant(inputs)
-    #bestComb = net.predictBestCombination(inputs)
-    #outputBestCombinationList.append(bestComb)
-    #scales = net.getScalePrediction(inputs)
-    inputList.append(inputs)
-    outputDiscriminantList.append(prediction)
+        
+    model = keras.models.Model(inputs=inputs,outputs=prediction)
+    opt = keras.optimizers.Adam(lr=learning_rate, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
+    model.compile(
+        opt, 
+        loss=[keras.losses.binary_crossentropy],
+        metrics=['accuracy'],
+        loss_weights=[1.]
+    )
+    return model
     
-    #outputScalesList.append(scales)
-    
 
 
-model = keras.models.Model(inputs=inputList,outputs=outputDiscriminantList)
-opt = keras.optimizers.Adam(lr=0.01, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
-model.compile(
-    opt, 
-    loss=[keras.losses.binary_crossentropy]*batchSize,
-    metrics=[],
-    loss_weights=[1.]*batchSize
-)
-    
-modeltest = keras.models.Model(inputs=inputList[0],outputs=[outputDiscriminantList[0]])
-modeltest.summary()
-
-
-outputFolder = "result_dense"
+outputFolder = "result_comb4"
 
 fstat = open(os.path.join(outputFolder,"model_stat.txt"),"w")
 fstat.close()
 
+'''
 print "-"*70
 trainBatch = Generator(trainFiles)
 testBatch = Generator(testFiles)
@@ -580,13 +621,19 @@ print "Signal: %i/%i (train/test)"%(trainBatch.nSignal,testBatch.nSignal)
 print "Background: %i/%i (train/test)"%(trainBatch.nBackground,testBatch.nBackground)
 print "S/B: %.2f%%/%.2f%% (train/test)"%(100.*trainBatch.nSignal/trainBatch.nBackground,100.*testBatch.nSignal/testBatch.nBackground)
 print "-"*70
+'''
 
+learning_rate = 0.005
     
 previousLoss = 1e10
 for epoch in range(1,51):
-    if epoch>1:
-        model.load_weights(os.path.join(outputFolder,"weights_%i.hdf5"%(epoch-1)))
 
+    model = setup_model(learning_rate)
+    if epoch==1:
+        model.summary()
+
+    trainBatch = input_pipeline(trainFiles,batchSizeTrain)
+    testBatch = input_pipeline(testFiles,batchSizeTest)
     
 
     stepTrain = 0 
@@ -605,61 +652,76 @@ for epoch in range(1,51):
     classLossFct = model.total_loss #includes also regularization loss
     inputGradients = tf.gradients(classLossFct,model.inputs)
     
+    
+    init_op = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
     sess = K.get_session()
+    sess.run(init_op)
     
-    for batch in trainBatch(batchSize):
-        if (epoch==0 and stepTrain>10) or (epoch>0):
-        
-            feedDict = {
-                K.learning_phase(): 0
-            }
-            for i in range(len(model.outputs)):
-                feedDict[model.targets[i]] = batch["truth"][i]
-                feedDict[model.sample_weights[i]] = numpy.ones(batch["truth"][i].shape[0])
-            
-            for i in range(len(model.inputs)):
-                feedDict[model.inputs[i]] = batch["features"][i]
-
-            classLossVal,inputGradientsVal = sess.run([classLossFct,inputGradients],feed_dict=feedDict)         
-            
-            direction = numpy.abs(numpy.random.normal(0,0.9,len(model.inputs)))+0.1
-            for i in range(len(model.inputs)):
-                batch["features"][i]+=direction[i]*inputGradientsVal[i]
-            
+    if epoch>1:
+        model.load_weights(os.path.join(outputFolder,"weights_%i.hdf5"%(epoch-1)))
     
+    coord = tf.train.Coordinator()
+    threads = tf.train.start_queue_runners(sess=sess, coord=coord)
     
-        stepTrain += 1
-        result = model.train_on_batch(batch["features"],batch["truth"],sample_weight=batch["weight"])
-        predict = model.predict_on_batch(batch["features"])
-        loss = sum(result[1:batchSize+1])/batchSize
-        #lossComb = sum(result[batchSize+1:2*batchSize+1])/batchSize
-        totalLossTrain+=loss
-        #totalLossCombTrain+=lossComb 
-        
-        Nbatch = len(batch["truth"])
+    try:
+        while(True):
+            trainBatchVal = sess.run(trainBatch)
+            for k in trainBatchVal.keys():
+                numpy.nan_to_num(trainBatchVal[k], copy=False)
+                
+            signalBatchSum = sum(trainBatchVal["truth"])  
+            signalweight = 1. if signalBatchSum==0 else 1.*batchSizeTrain/signalBatchSum
+            backgroundweight = 1. if signalBatchSum==batchSizeTrain else 1.*batchSizeTrain/(batchSizeTrain-signalBatchSum)
+            weight = trainBatchVal["truth"][:,0]*signalweight+(1-trainBatchVal["truth"][:,0])*backgroundweight
+            
+            if stepTrain>10 or epoch>1:
+                for _ in range(3):
+                    feedDict = {
+                        K.learning_phase(): 0,
+                        model.targets[0]:trainBatchVal["truth"],
+                        model.sample_weights[0]: weight,
+                        model.inputs[0]:trainBatchVal["features"]
+                    }
 
-        for i in range(Nbatch):
-            if batch["truth"][i][0][0]>0.5:
-                nSignalTrain+=1
-                histSignalTrain.Fill(predict[i])
-                if predict[i]>0.5:
-                    nAccSignalTrain+=1
-                    nAccTrain+=1
+                    classLossVal,inputGradientsVal = sess.run([classLossFct,inputGradients],feed_dict=feedDict)         
+                    direction = numpy.abs(numpy.random.normal(0,1.,trainBatchVal["features"].shape[0]))+1.
+                    shifts=numpy.einsum('ijk,i->ijk',inputGradientsVal[0],numpy.multiply(direction,trainBatchVal["truth"][:,0]))
+                    trainBatchVal["features"]+=shifts
+            
+            stepTrain += 1
+            result = model.train_on_batch(trainBatchVal["features"],trainBatchVal["truth"],sample_weight=weight)
+            predict = model.predict_on_batch(trainBatchVal["features"])
+            loss = result[0]
+            
+            #lossComb = sum(result[batchSize+1:2*batchSize+1])/batchSize
+            totalLossTrain+=loss
+            #totalLossCombTrain+=lossComb 
+            
+            #print predict
+            for i in range(batchSizeTrain):
+                if trainBatchVal["truth"][i][0]>0.5:
+                    nSignalTrain+=1
+                    histSignalTrain.Fill(predict[i][0])
+                    if predict[i][0]>0.5:
+                        nAccSignalTrain+=1
+                        nAccTrain+=1
 
-            else:
-                histBackgroundTrain.Fill(predict[i])
-                if predict[i]<0.5:
-                    nAccTrain+=1
-
-                    
-        if stepTrain%10==0:
-            print "Training step %i-%i: loss=%.4f, acc=%.3f%%, accSignal=%.3f%%"%(
-                epoch,stepTrain,loss,
-                100.*nAccTrain/stepTrain/batchSize,
-                100.*nAccSignalTrain/nSignalTrain if nSignalTrain>0 else 0,
-            )
-
-
+                else:
+                    histBackgroundTrain.Fill(predict[i][0])
+                    if predict[i][0]<0.5:
+                        nAccTrain+=1
+                        
+                        
+            if stepTrain%10==0:
+                print "Training step %i-%i: loss=%.4f, acc=%.3f%%, accSignal=%.3f%%"%(
+                    epoch,stepTrain,loss,
+                    100.*nAccTrain/stepTrain/batchSizeTrain,
+                    100.*nAccSignalTrain/nSignalTrain if nSignalTrain>0 else 0,
+                )
+            
+    except tf.errors.OutOfRangeError:
+        print('Done training for %d steps.' % (stepTrain))
+    
     model.save_weights(os.path.join(outputFolder,"weights_%i.hdf5"%epoch))
 
     stepTest = 0 
@@ -678,47 +740,52 @@ for epoch in range(1,51):
     scoreTest = []
     truthTest = []
     
-    for batch in testBatch(batchSize):
-        stepTest += 1
-        result = model.test_on_batch(batch["features"],batch["truth"],sample_weight=batch["weight"])
-        predict = model.predict_on_batch(batch["features"])
-        loss = sum(result[1:batchSize+1])/batchSize
-        #lossComb = sum(result[batchSize+1:2*batchSize+1])/batchSize
-        totalLossTest+=loss
-        #totalLossCombTest+=lossComb
-        
-        Nbatch = len(batch["truth"])
-        
-        for i in range(Nbatch):
-            scoreTest.append(predict[i][0][0])
-            if batch["truth"][i][0][0]>0.5:
-                nSignalTest+=1
-                histSignalTest.Fill(predict[i][0][0])
+    try:
+        while(True):
+            testBatchVal = sess.run(testBatch)
+            for k in testBatchVal.keys():
+                numpy.nan_to_num(testBatchVal[k], copy=False)
                 
+            signalBatchSum = sum(testBatchVal["truth"])  
+            signalweight = 1. if signalBatchSum==0 else 1.*batchSizeTest/signalBatchSum
+            backgroundweight = 1. if signalBatchSum==batchSizeTest else 1.*batchSizeTest/(batchSizeTest-signalBatchSum)
+            weight = testBatchVal["truth"][:,0]*signalweight+(1-testBatchVal["truth"][:,0])*backgroundweight
                 
-                truthTest.append(1)
-                if predict[i][0][0]>0.5:
-                    nAccSignalTest+=1
-                    nAccTest+=1
-                
-                
-                
-            else:
-                truthTest.append(0)
+            stepTest += 1
+            result = model.test_on_batch(testBatchVal["features"],testBatchVal["truth"],sample_weight=weight)
+            predict = model.predict_on_batch(testBatchVal["features"])
+            loss = result[0]
+            #lossComb = sum(result[batchSize+1:2*batchSize+1])/batchSize
+            totalLossTest+=loss
+            #totalLossCombTest+=lossComb
             
-                histBackgroundTest.Fill(predict[i][0][0])
-                if predict[i][0][0]<0.5:
-                    nAccTest+=1
+            
+            for i in range(batchSizeTest):
+                scoreTest.append(predict[i][0])
+                if testBatchVal["truth"][i][0]>0.5:
+                    nSignalTest+=1
+                    histSignalTest.Fill(predict[i][0])
+                    truthTest.append(1)
+                    if predict[i][0]>0.5:
+                        nAccSignalTest+=1
+                        nAccTest+=1
                     
-            
-        
-        if stepTest%10==0:
-            print "Testing step %i-%i: loss=%.4f, acc=%.3f%%, accSignal=%.3f%%"%(
-                epoch,stepTest,loss,
-                100.*nAccTest/stepTest/batchSize,
-                100.*nAccSignalTest/nSignalTest if nSignalTest>0 else 0,
-            )
-           
+                else:
+                    truthTest.append(0)
+                
+                    histBackgroundTest.Fill(predict[i][0])
+                    if predict[i][0]<0.5:
+                        nAccTest+=1
+
+            if stepTest%10==0:
+                print "Testing step %i-%i: loss=%.4f, acc=%.3f%%, accSignal=%.3f%%"%(
+                    epoch,stepTest,loss,
+                    100.*nAccTest/stepTest/batchSizeTest,
+                    100.*nAccSignalTest/nSignalTest if nSignalTest>0 else 0,
+                )
+                
+    except tf.errors.OutOfRangeError:
+        print('Done testing for %d steps.' % (stepTest))
             
     bgEffTest,sigEffTest,thres = metrics.roc_curve(truthTest, scoreTest)
     aucTest = metrics.auc(bgEffTest,sigEffTest)
@@ -726,11 +793,11 @@ for epoch in range(1,51):
     #aucTest = getAUC(sigEffTest, bgRejTest)
     drawROC(os.path.join(outputFolder,"roc_epoch%i"%epoch),sigEffTest,bgEffTest,auc=aucTest)
     
-    histSignalTrain.Rebin(500)
-    histBackgroundTrain.Rebin(500)
+    histSignalTrain.Rebin(250)
+    histBackgroundTrain.Rebin(250)
     
-    histSignalTest.Rebin(500)
-    histBackgroundTest.Rebin(500)
+    histSignalTest.Rebin(250)
+    histBackgroundTest.Rebin(250)
     
     drawDist(
         os.path.join(outputFolder,"dist_epoch%i"%epoch),
@@ -742,36 +809,38 @@ for epoch in range(1,51):
     avgLossTest = totalLossTest/stepTest
         
     print "-"*70
-    lr = float(K.get_value(model.optimizer.lr))
+    
     print "Epoch %i summary: lr=%.3e, loss=%.3f/%.3f, acc=%.2f%%/%.2f%%, accSignal=%.2f%%/%.2f%% (train/test), AUC=%.2f%%"%(
         epoch,
-        lr,
+        learning_rate,
         avgLossTrain,avgLossTest,
-        100.*nAccTrain/stepTrain/batchSize,100.*nAccTest/stepTest/batchSize,
+        100.*nAccTrain/stepTrain/batchSizeTrain,100.*nAccTest/stepTest/batchSizeTest,
         100.*nAccSignalTrain/nSignalTrain,100.*nAccSignalTest/nSignalTest,
         100.*aucTest
     ) 
     
     fstat = open(os.path.join(outputFolder,"model_stat.txt"),"a")
     fstat.write("%11.4e,%8.4f,%8.4f,%8.4f,%8.4f,%8.4f,%8.4f,%8.4f\n"%(
-        lr,avgLossTrain,avgLossTest,
-        100.*nAccTrain/stepTrain/batchSize,100.*nAccTest/stepTest/batchSize,
+        learning_rate,avgLossTrain,avgLossTest,
+        100.*nAccTrain/stepTrain/batchSizeTrain,100.*nAccTest/stepTest/batchSizeTest,
         100.*nAccSignalTrain/nSignalTrain,100.*nAccSignalTest/nSignalTest,
         100.*aucTest
     ))
     fstat.close()
     
-    
     if (avgLossTrain>previousLoss):
-        lr *= 0.8
-        K.set_value(model.optimizer.lr, lr)
+        learning_rate *= 0.8
         print "Reducing learning rate to: %.4e"%lr
         previousLoss = 0.5*(previousLoss+avgLossTrain)
     else:
         previousLoss = avgLossTrain
     print "-"*70
     
-    
+    coord.request_stop()
+    coord.join(threads)
+
+
+    K.clear_session()
     
     
 
