@@ -64,13 +64,13 @@ class Chain(object):
 
 def combinationSelectionMu(tree,icombination):
         
-    if (tree.BToKmumu_kaon_pt[icombination]<=1. or math.fabs(tree.BToKmumu_kaon_eta[icombination])>=2.4):
+    if (tree.BToKmumu_kaon_pt[icombination]<=3. or math.fabs(tree.BToKmumu_kaon_eta[icombination])>=0.8):
         return False
         
-    if (tree.BToKmumu_mu1_pt[icombination]<=1. or math.fabs(tree.BToKmumu_mu1_eta[icombination])>=2.4):
+    if (tree.BToKmumu_mu1_pt[icombination]<=3. or math.fabs(tree.BToKmumu_mu1_eta[icombination])>=0.8):
         return False
         
-    if (tree.BToKmumu_mu2_pt[icombination]<=1. or math.fabs(tree.BToKmumu_mu2_eta[icombination])>=2.4):
+    if (tree.BToKmumu_mu2_pt[icombination]<=3. or math.fabs(tree.BToKmumu_mu2_eta[icombination])>=0.8):
         return False
         
     if (tree.BToKmumu_mu1_charge[icombination]*tree.BToKmumu_mu2_charge[icombination]>0):
@@ -80,13 +80,13 @@ def combinationSelectionMu(tree,icombination):
     
 def combinationSelectionEle(tree,icombination):
         
-    if (tree.BToKee_kaon_pt[icombination]<=1. or math.fabs(tree.BToKee_kaon_eta[icombination])>=2.4):
+    if (tree.BToKee_kaon_pt[icombination]<=3. or math.fabs(tree.BToKee_kaon_eta[icombination])>=0.8):
         return False
         
-    if (tree.BToKee_ele1_pt[icombination]<=1. or math.fabs(tree.BToKee_ele1_eta[icombination])>=2.4):
+    if (tree.BToKee_ele1_pt[icombination]<=3. or math.fabs(tree.BToKee_ele1_eta[icombination])>=0.8):
         return False
         
-    if (tree.BToKee_ele2_pt[icombination]<=1. or math.fabs(tree.BToKee_ele2_eta[icombination])>=2.4):
+    if (tree.BToKee_ele2_pt[icombination]<=3. or math.fabs(tree.BToKee_ele2_eta[icombination])>=0.8):
         return False
         
     if (tree.BToKee_ele1_charge[icombination]*tree.BToKee_ele2_charge[icombination]>0):
@@ -251,7 +251,7 @@ for f in os.listdir("/vols/cms/tstreble/BPH/BToKmumu_ntuple/BToKmumu_18_08_14_ne
         fullFilePath = os.path.join("/vols/cms/tstreble/BPH/BToKmumu_ntuple/BToKmumu_18_08_14_new/",f)
         signalFilesMu.append(fullFilePath)
         
-signalChainMu = Chain(signalFilesMu[0:20])
+signalChainMu = Chain(signalFilesMu)
 
 nEvents,nPassBaseSelection,nPassSignalSelection = calculateEfficiency(
     signalChainMu,
