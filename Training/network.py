@@ -3,29 +3,24 @@ import keras
 from keras import backend as K
 
 class Network:
-    def __init__(self,regLoss=1e-4):
+    def __init__(self,regLoss=1e-5):
         self.convLayers = [
             keras.layers.Conv1D(32, 1, strides=1, activation=None,
                 kernel_regularizer=keras.regularizers.l2(regLoss)
             ),
-            keras.layers.LeakyReLU(alpha=0.1),
+            keras.layers.LeakyReLU(alpha=0.01), 
             #drop same features (=filters) for all combinations
             keras.layers.Dropout(0.2,noise_shape=[1,1,32]),
-            keras.layers.Conv1D(32, 1, strides=1, activation=None,
+            keras.layers.Conv1D(10, 1, strides=1, activation='tanh', 
                 kernel_regularizer=keras.regularizers.l2(regLoss)
             ),
-            keras.layers.LeakyReLU(alpha=0.1), 
-            #drop same features (=filters) for all combinations
-            keras.layers.Dropout(0.3,noise_shape=[1,1,32]),
-            keras.layers.Conv1D(16, 1, strides=1, activation='tanh', 
-                kernel_regularizer=keras.regularizers.l2(regLoss)
-            ),
-            keras.layers.Dropout(0.3),
+            keras.layers.Dropout(0.2),
         ]
 
         self.lstmLayers = [
-            keras.layers.LSTM(50, activation='tanh', recurrent_activation='hard_sigmoid',
+            keras.layers.LSTM(20, activation='tanh', recurrent_activation='hard_sigmoid',
                 kernel_regularizer=keras.regularizers.l2(regLoss),
+                kernel_initializer=keras.initializers.lecun_uniform(seed=12345),
                 implementation=2,
                 recurrent_dropout=0.1,
                 go_backwards=True
@@ -46,26 +41,29 @@ class Network:
         ]
         
         self.predictLayers = [
-            keras.layers.Dense(50, activation=None,
+            keras.layers.Dense(20, activation=None,
                 kernel_regularizer=keras.regularizers.l2(regLoss)
             ),
-            keras.layers.LeakyReLU(alpha=0.1),
-            keras.layers.Dropout(0.2),
-            keras.layers.Dense(50, activation=None,
-                kernel_regularizer=keras.regularizers.l2(regLoss)
+            keras.layers.LeakyReLU(alpha=0.01),
+            keras.layers.Dropout(0.1),
+            keras.layers.Dense(20, activation=None,
+                kernel_regularizer=keras.regularizers.l2(regLoss),
+                kernel_initializer=keras.initializers.lecun_uniform(seed=56789),
             ),
-            keras.layers.LeakyReLU(alpha=0.1),
-            keras.layers.Dropout(0.2),
+            keras.layers.LeakyReLU(alpha=0.01),
+            keras.layers.Dropout(0.1),
         ]
         
         self.finalLayers = [
-            keras.layers.Dense(50, activation=None,
-                kernel_regularizer=keras.regularizers.l2(regLoss)
+            keras.layers.Dense(20, activation=None,
+                kernel_regularizer=keras.regularizers.l2(regLoss),
+                kernel_initializer=keras.initializers.lecun_uniform(seed=912356),
             ),
-            keras.layers.LeakyReLU(alpha=0.1),
-            keras.layers.Dropout(0.3),
+            keras.layers.LeakyReLU(alpha=0.01),
+            keras.layers.Dropout(0.1),
             keras.layers.Dense(1, activation='sigmoid',
-                kernel_regularizer=keras.regularizers.l2(regLoss)
+                kernel_regularizer=keras.regularizers.l2(regLoss),
+                kernel_initializer=keras.initializers.lecun_uniform(seed=235678),
             )
         ]
 

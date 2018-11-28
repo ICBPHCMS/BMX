@@ -502,7 +502,7 @@ def drawDist(name,signalHists,backgroundHists):
     cv.Print(name+".root")
         
         
-basepath = "/vols/cms/mkomm/BPH/training/"
+basepath = "/vols/cms/mkomm/BPH/training4/"
 
 trainFiles = []
 testFiles = []
@@ -525,8 +525,8 @@ for l in os.listdir(basepath):
         except Exception,e:
             print "cannot open file",filePath," -> skip"
         
-#trainFiles = trainFiles[0:5]
-#testFiles = testFiles[0:5]
+trainFiles = trainFiles[0:5]
+testFiles = testFiles[0:5]
         
 print "found ",len(trainFiles),"/",len(testFiles)," train/test files"
 #sys.exit(1)
@@ -538,7 +538,7 @@ outputDiscriminantList = []
 #outputBestCombinationList = []
 #outputScalesList = []
 
-batchSize = 200
+batchSize = 20
 
 for i in range(batchSize):
     if (i+1)%10==0:

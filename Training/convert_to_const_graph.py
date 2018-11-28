@@ -23,7 +23,7 @@ if not arguments.weightfile[0].endswith(".hdf5"):
 
 sess = K.get_session()
 
-tf_input_placeholder = tf.placeholder('float32',shape=(None,200,24),name="cpf")
+tf_input_placeholder = tf.placeholder('float32',shape=(None,200,24),name="features")
 keras_input = keras.layers.Input(tensor=tf_input_placeholder)
 
 print "input shape: ",keras_input.shape.as_list()
