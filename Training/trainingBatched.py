@@ -115,6 +115,80 @@ def input_pipeline(files, batchSize,repeat=1):
         
         return batch
         
+    
+        
+        
+class Generator:
+    def __init__(self, fileList):
+        self.fileList = fileList
+        
+        self.data = []
+     
+        self.nSignal = 0
+        self.nBackground = 0
+     
+        for f in self.fileList:
+            with h5py.File(f, 'r') as hf:
+                keys = hf.keys()
+                for index in keys:
+                    truthArray = numpy.array(hf[index]["truth"])
+                    if truthArray[0]>0.5:
+                        self.nSignal+=1
+                    else:
+                        self.nBackground+=1
+                        
+        self.SBratio = 1.*self.nSignal/self.nBackground
+        
+                    
+
+    def __call__(self,batchSize=1):
+        random.shuffle(self.fileList)
+             
+        truthList = []
+        weightList = []
+        featureList = []
+        scalesList = []
+        genIndexList = []
+            
+        for f in self.fileList:
+            with h5py.File(f, 'r') as hf:
+                keys = hf.keys()
+                random.shuffle(keys)
+                for index in keys:
+                    truthArray = numpy.array(hf[index]["truth"])
+                    featureArray = numpy.array(hf[index]["features"])
+                    scaleArray = numpy.array(hf[index]["scales"])
+                    genIndexArray = numpy.array(hf[index]["genIndex"])
+                    if (not numpy.all(numpy.isfinite(truthArray))) or \
+                       (not numpy.all(numpy.isfinite(featureArray))) or \
+                       (not numpy.all(numpy.isfinite(scaleArray))) or \
+                       (not numpy.all(numpy.isfinite(genIndexArray))):
+                        continue
+
+                        
+                    weight = truthArray[:]
+                    weight = (1.-weight)*self.SBratio+weight
+                        
+                    truthList.append(numpy.expand_dims((truthArray),axis=0))
+                    weightList.append(weight)
+                    featureList.append(numpy.expand_dims((featureArray),axis=0))
+                    scalesList.append(numpy.expand_dims((scaleArray),axis=0))
+                    genIndexList.append(numpy.expand_dims((genIndexArray),axis=0))
+                    if len(truthList)==batchSize:
+                        batchDict = {
+                            "truth":truthList[:],
+                            "features":featureList[:],
+                            "weight":weightList[:],
+                            "scales":scalesList[:],
+                            "genIndex":genIndexList[:]
+                        }
+                        truthList = []
+                        weightList = []
+                        featureList = []
+                        scalesList = []
+                        genIndexList = []
+                        yield batchDict 
+        
 def fitMass(name,massHist,title=""):
     w = ROOT.RooWorkspace("w"+str(name)+str(random.random()))
     w.factory("x[4.5, 6.5]")

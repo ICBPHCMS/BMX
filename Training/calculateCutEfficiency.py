@@ -65,13 +65,13 @@ class Chain(object):
 
 def combinationSelectionMu(tree,icombination):
         
-    if (tree.BToKmumu_kaon_pt[icombination]<=1. or math.fabs(tree.BToKmumu_kaon_eta[icombination])>=2.5):
+    if (tree.BToKmumu_kaon_pt[icombination]<=1. or math.fabs(tree.BToKmumu_kaon_eta[icombination])>=2.4):
         return False
         
-    if (tree.BToKmumu_mu1_pt[icombination]<=1. or math.fabs(tree.BToKmumu_mu1_eta[icombination])>=2.5):
+    if (tree.BToKmumu_mu1_pt[icombination]<=1. or math.fabs(tree.BToKmumu_mu1_eta[icombination])>=2.4):
         return False
         
-    if (tree.BToKmumu_mu2_pt[icombination]<=1. or math.fabs(tree.BToKmumu_mu2_eta[icombination])>=2.5):
+    if (tree.BToKmumu_mu2_pt[icombination]<=1. or math.fabs(tree.BToKmumu_mu2_eta[icombination])>=2.4):
         return False
         
     if (tree.BToKmumu_mu1_charge[icombination]*tree.BToKmumu_mu2_charge[icombination]>0):
@@ -80,17 +80,23 @@ def combinationSelectionMu(tree,icombination):
     if (tree.BToKmumu_CL_vtx[icombination]<0.001):
         return False
         
+    #if (tree.BToKmumu_cosAlpha[icombination]<0.9):
+    #    return False
+        
+    if tree.BToKmumu_mass[icombination]<4. or tree.BToKmumu_mass[icombination]>7.:
+        return False
+        
     return True
     
 def combinationSelectionEle(tree,icombination):
-        
-    if (tree.BToKee_kaon_pt[icombination]<=1. or math.fabs(tree.BToKee_kaon_eta[icombination])>=2.5):
+    #return True
+    if (tree.BToKee_kaon_pt[icombination]<=1. or math.fabs(tree.BToKee_kaon_eta[icombination])>=2.4):
         return False
         
-    if (tree.BToKee_ele1_pt[icombination]<=1. or math.fabs(tree.BToKee_ele1_eta[icombination])>=2.5):
+    if (tree.BToKee_ele1_pt[icombination]<=1. or math.fabs(tree.BToKee_ele1_eta[icombination])>=2.4):
         return False
         
-    if (tree.BToKee_ele2_pt[icombination]<=1. or math.fabs(tree.BToKee_ele2_eta[icombination])>=2.5):
+    if (tree.BToKee_ele2_pt[icombination]<=1. or math.fabs(tree.BToKee_ele2_eta[icombination])>=2.4):
         return False
         
     if (tree.BToKee_ele1_charge[icombination]*tree.BToKee_ele2_charge[icombination]>0):
@@ -99,9 +105,15 @@ def combinationSelectionEle(tree,icombination):
     if (tree.BToKee_CL_vtx[icombination]<0.001):
         return False
         
+    
+        
+    if tree.BToKee_mass[icombination]<4. or tree.BToKmumu_mass[icombination]>7.:
+        return False
+        
     return True
 
 def baseSelectionMu(tree,isSignal):
+    #return True
     #at least one b hypothesis
     if (tree.nBToKmumu==0):
         return False
@@ -117,15 +129,16 @@ def baseSelectionMu(tree,isSignal):
     if (isSignal and tree.BToKmumu_gen_index<0):
         return False
         
+    #guanarntees at least one combination surviving
     if (not combinationSelectionMu(tree,tree.BToKmumu_sel_index)):
         return False
         
     #veto B mass window for background to reject signal in data
-    if (not isSignal and tree.BToKmumu_mass[tree.BToKmumu_sel_index]>4.5 and tree.BToKmumu_mass[tree.BToKmumu_sel_index]<5.6):
-        return False
+    #if (not isSignal and tree.BToKmumu_mass[tree.BToKmumu_sel_index]>4. and tree.BToKmumu_mass[tree.BToKmumu_sel_index]<7.):
+    #    return False
         
-    if (not isSignal and tree.BToKmumu_mass[tree.BToKmumu_sel_index]<3):
-        return False
+    #if (not isSignal and tree.BToKmumu_mass[tree.BToKmumu_sel_index]<3):
+    #    return False
         
     return True
     
@@ -146,12 +159,16 @@ def baseSelectionEle(tree,isSignal):
     if (isSignal and tree.BToKee_gen_index<0):
         return False
         
+    #guanarntees at least one combination surviving
     if (not combinationSelectionEle(tree,tree.BToKee_sel_index)):
         return False
         
     #veto B mass window for background to reject signal in data
     if (not isSignal and tree.BToKee_mass[tree.BToKee_sel_index]>5. and tree.BToKee_mass[tree.BToKee_sel_index]<5.6):
         return False
+        
+    #if (tree.BToKmumu_cosAlpha[tree.BToKmumu_sel_index]<=0.99):
+    #    return False
         
     return True
     
@@ -166,7 +183,6 @@ def signalSelectionMu(tree,isSignal):
         return False
     if (tree.BToKmumu_kaon_pt[tree.BToKmumu_sel_index]<=1.5):
         return False
-        
     return True
     
 def signalSelectionEle(tree,isSignal):
@@ -195,23 +211,26 @@ def calculateEfficiency(chain,baseSelection,signalSelection,combinationSelection
         combIndexDict = {}
     
     for ientry in range(nEvents):
-        if ientry%1000==0:
-            print "processing ... %i/%i"%(ientry,nEvents)
+        #if ientry%20000==0:
+        #    print "processing ... %i/%i"%(ientry,nEvents)
         chain.GetEntry(ientry)
         if not baseSelection(chain,isSignal):
             continue
-        nPassBaseSelection+=1
         
-        if isSignal:
-            selectedCombIndicesCLvtxPairs = []
+        selectedCombIndicesCLvtxPairs = []
+        
+        for icomb in range(nCombinations(chain)):
+            if (combinationSelection(chain,icomb)):
+                selectedCombIndicesCLvtxPairs.append([icomb,combinationCLVtx(chain,icomb)])
+        if len(selectedCombIndicesCLvtxPairs)==0:
+            continue
             
-            for icomb in range(nCombinations(chain)):
-                if (combinationSelection(chain,icomb)):
-                    #if (chain.BToKmumu_CL_vtx[icomb]<0.001):
-                    #    continue
-                    selectedCombIndicesCLvtxPairs.append([icomb,combinationCLVtx(chain,icomb)])
-            selectedCombIndicesCLvtxPairsSorted = sorted(selectedCombIndicesCLvtxPairs,key=lambda elem: -elem[1])
-            selectedCombIndicesSorted = map(lambda x:x[0],selectedCombIndicesCLvtxPairsSorted)
+        nPassBaseSelection+=1
+            
+        selectedCombIndicesCLvtxPairsSorted = sorted(selectedCombIndicesCLvtxPairs,key=lambda elem: -elem[1])
+        selectedCombIndicesSorted = map(lambda x:x[0],selectedCombIndicesCLvtxPairsSorted)
+            
+        if isSignal:
             genIndex = -1
             for icombSorted,icombIndex in enumerate(selectedCombIndicesSorted):
                 if icombIndex==int(genCombination(chain)):
@@ -235,22 +254,22 @@ def calculateEfficiency(chain,baseSelection,signalSelection,combinationSelection
     return nEvents,nPassBaseSelection,nPassSignalSelection
     
    
-'''
+
 backgroundFiles = []
 
 for folder in [
-    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR27_BToKmumu/A1",
-    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR27_BToKmumu/A2",
-    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR27_BToKmumu/A3",
-    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR27_BToKmumu/A4",
-    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR27_BToKmumu/A5",
-    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR27_BToKmumu/A6",
+    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/A1",
+    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/A2",
+    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/A3",
+    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/A4",
+    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/A5",
+    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/A6",
     
-    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR27_BToKmumu/B1",
-    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR27_BToKmumu/B2",
-    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR27_BToKmumu/B3",
-    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR27_BToKmumu/B4",
-    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR27_BToKmumu/B5",
+    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/B1",
+    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/B2",
+    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/B3",
+    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/B4",
+    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/B5",
 ]:
     for f in os.listdir(folder):
         if re.match("\w+.root",f):
@@ -258,15 +277,15 @@ for folder in [
 
             backgroundFiles.append(fullFilePath)
             
-backgroundChain = Chain(backgroundFiles)
-'''
-signalFilesMu = []
-for f in os.listdir("/vols/cms/vc1116/BParking/ntuPROD/mc_BToKmumuNtuple/PR27_BToKmumu"):
-    if re.match("\w+.root",f):
-        fullFilePath = os.path.join("/vols/cms/vc1116/BParking/ntuPROD/mc_BToKmumuNtuple/PR27_BToKmumu",f)
-        signalFilesMu.append(fullFilePath)
+#backgroundChain = Chain(backgroundFiles[0:20])
+
+signalFilesMu = [
+    #'/vols/cms/vc1116/BParking/ntuPROD/mc_BToKmumuNtuple/ntu_mc_BToKmumu_PR27.root',
+    '/vols/cms/vc1116/BParking/ntuPROD/BPH_MC_Ntuple/ntu_PR36_BPH_MC_BuToK_ToMuMu.root'
+]
+
         
-signalChainMu = Chain(signalFilesMu[0:10])
+signalChainMu = Chain(signalFilesMu)
 
 nEvents,nPassBaseSelection,nPassSignalSelection = calculateEfficiency(
     signalChainMu,
@@ -274,7 +293,8 @@ nEvents,nPassBaseSelection,nPassSignalSelection = calculateEfficiency(
     signalSelection=signalSelectionMu,
     combinationSelection=combinationSelectionMu,
     nCombinations = lambda tree:tree.nBToKmumu,
-    combinationCLVtx = lambda tree,i:-tree.BToKmumu_Chi2_vtx[i],
+    #combinationCLVtx = lambda tree,i:-tree.BToKmumu_Chi2_vtx[i],
+    combinationCLVtx = lambda tree,i:tree.BToKmumu_CL_vtx[i],
     genCombination = lambda tree:tree.BToKmumu_gen_index,
     isSignal=True
 )
@@ -301,7 +321,7 @@ nEvents,nPassBaseSelection,nPassSignalSelection = calculateEfficiency(
 print "signal ele",nEvents,nPassBaseSelection,nPassSignalSelection,100.*nPassBaseSelection/nEvents,"%",100.*nPassSignalSelection/nPassBaseSelection,"%"
 '''
 
-''''
+'''
 nEvents,nPassBaseSelection,nPassSignalSelection = calculateEfficiency(
     backgroundChain,
     baseSelection=baseSelectionMu,

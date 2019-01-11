@@ -10,7 +10,7 @@ import h5py
 import re
 import time
 import uproot
-#import tensorflow as tf
+import tensorflow as tf
 
 
 def _int64_feature(array):
@@ -51,25 +51,18 @@ def closestJet(tree,eta,phi):
         dr2 = (eta-getValue(tree,"Jet_eta",ijet))**2+deltaPhi(phi,getValue(tree,"Jet_phi",ijet))**2
         minDR2 = min(minDR2,dr2)
     return math.sqrt(minDR2)
-    
-    if (tree.BToKmumu_CL_vtx[tree.BToKmumu_sel_index]<=0.1):
-        return False
-    if (tree.BToKmumu_cosAlpha[tree.BToKmumu_sel_index]<=0.999):
-        return False
-    if (tree.BToKmumu_Lxy[tree.BToKmumu_sel_index]<=6):
-        return False
-    if (tree.BToKmumu_pt[tree.BToKmumu_sel_index]<=10.):
-        return False
-    if (tree.BToKmumu_kaon_pt[tree.BToKmumu_sel_index]<=1.5):
-        return False
-'''
+
+
 features = [
+    ["mu1_eta",lambda i,tree: math.fabs(getValue(tree,"BToKmumu_mu1_eta",i))],
+    ["mu2_eta",lambda i,tree: math.fabs(getValue(tree,"BToKmumu_mu2_eta",i))],
+
     ["mu1_iso",lambda i,tree: math.log10(1e-5+getValue(tree,"Muon_pfRelIso03_all",getValue(tree,"BToKmumu_mu1_index",i)))],
-    ["mu2_iso",lambda i,tree: math.log10(1e-5+getValue(tree,"Muon_pfRelIso03_all",getValue(tree,"BToKmumu_mu2_index",i)))],
+    ["mu1_djet",lambda i,tree: math.log10(closestJet(tree,getValue(tree,"BToKmumu_mu1_eta",i),getValue(tree,"BToKmumu_mu1_phi",i))+1e-10)],
+    ["mu2_djet",lambda i,tree: math.log10(closestJet(tree,getValue(tree,"BToKmumu_mu2_eta",i),getValue(tree,"BToKmumu_mu2_phi",i))+1e-10)],
     
     ["mumu_deltaR",lambda i,tree: math.sqrt((getValue(tree,"BToKmumu_mu1_eta",i)-getValue(tree,"BToKmumu_mu2_eta",i))**2+deltaPhi(getValue(tree,"BToKmumu_mu1_phi",i),getValue(tree,"BToKmumu_mu2_phi",i))**2)],
     ["mumu_deltaxy",lambda i,tree: math.log10(math.fabs(getValue(tree,"BToKmumu_mu1_dxy",i)-getValue(tree,"BToKmumu_mu2_dxy",i))+1e-10)],
-    #5
     ["mumu_deltaz",lambda i,tree: math.log10(math.fabs(getValue(tree,"BToKmumu_mu1_dz",i)-getValue(tree,"BToKmumu_mu2_dz",i))+1e-10)],
     
     
@@ -80,7 +73,6 @@ features = [
     ["kmu2_relpt",lambda i,tree: math.log10(getValue(tree,"BToKmumu_kaon_pt",i)/(getValue(tree,"BToKmumu_mu2_pt",i)+1e-10))],
     
     ["kmu1_deltaxy",lambda i,tree: math.log10(math.fabs(getValue(tree,"BToKmumu_mu1_dxy",i)-getValue(tree,"BToKmumu_kaon_dxy",i))+1e-10)],
-    #10
     ["kmu2_deltaxy",lambda i,tree: math.log10(math.fabs(getValue(tree,"BToKmumu_mu2_dxy",i)-getValue(tree,"BToKmumu_kaon_dxy",i))+1e-10)],
     
     ["kmu1_deltaz",lambda i,tree: math.log10(math.fabs(getValue(tree,"BToKmumu_mu1_dz",i)-getValue(tree,"BToKmumu_kaon_dz",i))+1e-10)],
@@ -89,7 +81,6 @@ features = [
     ["k_pt",lambda i,tree: math.log10(max(0.1,getValue(tree,"BToKmumu_kaon_pt",i)))],
     
     ["k_eta",lambda i,tree: math.fabs(getValue(tree,"BToKmumu_kaon_eta",i))],
-    #15
     ["k_dxy",lambda i,tree: math.log10(math.fabs(getValue(tree,"BToKmumu_kaon_dxy",i))+1e-10)],
     ["k_dz",lambda i,tree: math.log10(math.fabs(getValue(tree,"BToKmumu_kaon_dz",i))+1e-10)],
     
@@ -97,7 +88,6 @@ features = [
     
     ["B_pt",lambda i,tree: math.log10(max(0.1,getValue(tree,"BToKmumu_pt",i)))],
     ["B_eta",lambda i,tree: math.fabs(getValue(tree,"BToKmumu_eta",i))],
-    #20
     ["alpha",lambda i,tree: math.acos(min(max(getValue(tree,"BToKmumu_cosAlpha",i),-1),1))], #angle between B and (SV-PV)
     ["Lxy",lambda i,tree: math.log10(getValue(tree,"BToKmumu_Lxy",i)+1e-10)], #significance of displacement
     ["ctxy",lambda i,tree: math.log10(getValue(tree,"BToKmumu_ctxy",i)+1e-10)],
@@ -105,15 +95,14 @@ features = [
     ["vtx_Chi2",lambda i,tree: math.log10(max(getValue(tree,"BToKmumu_Chi2_vtx",i),1e-5))]
 ]
 '''
-        
 features = [
     ["vtx_CL",lambda i,tree: getValue(tree,"BToKmumu_CL_vtx",i)],
-    ["alpha",lambda i,tree: getValue(tree,"BToKmumu_cosAlpha",i)], #angle between B and (SV-PV)
+    ["cosAlpha",lambda i,tree: getValue(tree,"BToKmumu_cosAlpha",i)], #angle between B and (SV-PV)
     ["Lxy",lambda i,tree: getValue(tree,"BToKmumu_Lxy",i)], #significance of displacement
     ["B_pt",lambda i,tree: getValue(tree,"BToKmumu_pt",i)],
     ["k_pt",lambda i,tree: getValue(tree,"BToKmumu_kaon_pt",i)],
 ]
-
+'''
 scales = [
     ["mumu_mass",lambda i,tree: math.fabs(getValue(tree,"BToKmumu_mumu_mass",i))],
     ["B_mass",lambda i,tree: math.fabs(getValue(tree,"BToKmumu_mass",i))],
@@ -125,16 +114,30 @@ charges = [
     ["kaon_charge",lambda i,tree: getValue(tree,"BToKmumu_kaon_charge",i)],
 ]
 
-def countSelected(tree,selection):
-    hist = ROOT.TH1F("selection"+str(random.random())+hash(selection),"",1,-1,1)
-    tree.Project(hist.GetName(),selection)
-    return hist.GetEntries()
-    
+
 def myHash(value):
     h = ((int(value) >> 16) ^ int(value)) * 0x45d9f3b
     h = ((h >> 16) ^ h) * 0x45d9f3b
     h = (h >> 16) ^ h
     return h
+    
+    
+def combinationSelection(tree,icombination,isSignal):
+    if (tree.BToKmumu_mu1_pt[icombination]<1. or math.fabs(tree.BToKmumu_mu1_eta[icombination])>=2.4):
+        return False
+    if (tree.BToKmumu_mu2_pt[icombination]<1. or math.fabs(tree.BToKmumu_mu2_eta[icombination])>=2.4):
+        return False
+    if (tree.BToKmumu_kaon_pt[icombination]<1. or math.fabs(tree.BToKmumu_kaon_eta[icombination])>=2.4):
+        return False
+    if (tree.BToKmumu_CL_vtx[icombination]<0.001):
+        return False
+    #if (tree.BToKmumu_cosAlpha[icombination]<0.9):
+    #    return False
+    if (tree.BToKmumu_mass[icombination]<4. or tree.BToKmumu_mass[icombination]>7.):
+        return False
+    if (tree.BToKmumu_mu1_charge[icombination]*tree.BToKmumu_mu2_charge[icombination]>=0):
+        return False
+    return True
     
 def baseSelection(tree,isSignal):
     #at least one b hypothesis
@@ -152,91 +155,36 @@ def baseSelection(tree,isSignal):
     if (isSignal and tree.BToKmumu_gen_index<0):
         return False
         
-    if (getValue(tree,"BToKmumu_kaon_pt",tree.BToKmumu_sel_index)<=1. or math.fabs(getValue(tree,"BToKmumu_kaon_eta",tree.BToKmumu_sel_index))>=2.4):
-        return False
-        
-    if (getValue(tree,"BToKmumu_mu1_pt",tree.BToKmumu_sel_index)<=1. or math.fabs(getValue(tree,"BToKmumu_mu1_eta",tree.BToKmumu_sel_index))>=2.4):
-        return False
-        
-    if (getValue(tree,"BToKmumu_mu2_pt",tree.BToKmumu_sel_index)<=1. or math.fabs(getValue(tree,"BToKmumu_mu2_eta",tree.BToKmumu_sel_index))>=2.4):
-        return False
-        
-    if (getValue(tree,"BToKmumu_mu1_charge",tree.BToKmumu_sel_index)*getValue(tree,"BToKmumu_mu2_charge",tree.BToKmumu_sel_index)>=0):
-        return False
-    
-    if (not isSignal and (getValue(tree,"BToKmumu_mass",tree.BToKmumu_sel_index)<4.5 or getValue(tree,"BToKmumu_mass",tree.BToKmumu_sel_index)>7.)):
+    if not combinationSelection(tree,tree.BToKmumu_sel_index,isSignal):
         return False
         
     return True
     
     
-def signalSelectionMu(tree):
-    if (tree.BToKmumu_CL_vtx[tree.BToKmumu_sel_index]<=0.1):
+    
+def refSelectionMu(tree,icombination):
+    if (tree.BToKmumu_CL_vtx[icombination]<=0.1):
         return False
-    if (tree.BToKmumu_cosAlpha[tree.BToKmumu_sel_index]<=0.999):
+    if (tree.BToKmumu_cosAlpha[icombination]<=0.999):
         return False
-    if (tree.BToKmumu_Lxy[tree.BToKmumu_sel_index]<=6):
+    if (tree.BToKmumu_Lxy[icombination]<=6):
         return False
-    if (tree.BToKmumu_pt[tree.BToKmumu_sel_index]<=10.):
+    if (tree.BToKmumu_pt[icombination]<=10.):
         return False
-    if (tree.BToKmumu_kaon_pt[tree.BToKmumu_sel_index]<=1.5):
+    if (tree.BToKmumu_kaon_pt[icombination]<=1.5):
         return False
         
     return True
     
     
-def writeEvent(tree,index,writer,isSignal=False,isTestData=False,fixedLen=-1):
-    
-    if (not baseSelection(tree,isSignal)):
-        return False
-    
-    massVtxCLIndex=[]
-    selectedCombinations=[]
-    
-    for icombination in range(tree.nBToKmumu):
-        #select a significance of at least 0.1% (note: this is calculated from chi2 of fit; =0 occurs through numerical precision)
-        #if (getValue(tree,"BToKmumu_CL_vtx",icombination)<0.001):
-        #    continue
-        if (getValue(tree,"BToKmumu_mu1_pt",icombination)<1. or math.fabs(getValue(tree,"BToKmumu_mu1_eta",icombination))>=2.4):
-            continue
-        if (getValue(tree,"BToKmumu_mu2_pt",icombination)<1. or math.fabs(getValue(tree,"BToKmumu_mu2_eta",icombination))>=2.4):
-            continue
-        if (getValue(tree,"BToKmumu_kaon_pt",icombination)<1. or math.fabs(getValue(tree,"BToKmumu_kaon_eta",icombination))>=2.4):
-            continue
-        if (tree.BToKmumu_CL_vtx[icombination]<0.001):
-            continue
-        if (getValue(tree,"BToKmumu_mu1_charge",icombination)*getValue(tree,"BToKmumu_mu2_charge",icombination)>=0):
-            continue
-        
-        massVtxCLIndex.append([-getValue(tree,"BToKmumu_CL_vtx",icombination),getValue(tree,"BToKmumu_mass",icombination),icombination])
-        selectedCombinations.append(icombination)
-    
-    
-        
-        
-    if len(selectedCombinations)==0:
-        return False
-    massVtxCLIndexSortedByVtxCL = sorted(massVtxCLIndex,key=lambda elem: elem[0])    
-    selectedCombinationsSortedByVtxCL = map(lambda x:x[2],massVtxCLIndexSortedByVtxCL)
+def buildArrays(tree,Ncomb,selectedCombinationsSortedByVtxCL,isSignal=False):
 
-    '''
-    if (not isSignal):
-        minMassBestHalf = min(map(lambda elem:elem[1],massVtxCLIndexSortedByVtxCL[:(1+len(massVtxCLIndexSortedByVtxCL)/2)]))
-        if (minMassBestHalf<5.6):
-            return False
-    '''
-    record = {}
- 
-    Ncomb = len(selectedCombinationsSortedByVtxCL)
-    if fixedLen>0:
-        Ncomb = fixedLen
-    
-    featureArray = numpy.zeros((Ncomb*len(features)),dtype=numpy.float32)
-    scaleArray = numpy.zeros((Ncomb*len(scales)),dtype=numpy.float32)
-    chargeArray = numpy.zeros((Ncomb*len(charges)),dtype=numpy.float32)
+    featureArray = numpy.zeros((Ncomb,len(features)),dtype=numpy.float32)
+    scaleArray = numpy.zeros((Ncomb,len(scales)),dtype=numpy.float32)
     #one hot encoding of correct triplet (last one if no triplet is correct or background)
     genIndexArray = numpy.zeros((Ncomb+1),dtype=numpy.float32)
-    
+    bmassArray = numpy.zeros((Ncomb),dtype=numpy.float32)
+    refSelArray = numpy.zeros((Ncomb),dtype=numpy.float32)
     
     #set to last one by default == no triplet is correct
     genCombinationIndex = Ncomb
@@ -265,41 +213,71 @@ def writeEvent(tree,index,writer,isSignal=False,isTestData=False,fixedLen=-1):
             break
         for ifeature in range(len(features)):
             value = features[ifeature][1](combinationIndex,tree)
-            featureArray[iselectedCombination*len(features)+ifeature]=value
+            featureArray[iselectedCombination,ifeature]=value
             
         for iscale in range(len(scales)):
             value = scales[iscale][1](combinationIndex,tree)
-            scaleArray[iselectedCombination*len(scales)+iscale]=value
-            
-        for icharge in range(len(charges)):
-            value = charges[icharge][1](combinationIndex,tree)
-            chargeArray[iselectedCombination*len(charges)+icharge]=value
+            scaleArray[iselectedCombination,iscale]=value
         
-        
-    '''
-    #if isSignal:
-    print selectedCombinationsSortedByVtxCL[0],tree.BToKmumu_sel_index
-    print featureArray[0:len(features)]
-    print tree.BToKmumu_CL_vtx[tree.BToKmumu_sel_index],
-    print tree.BToKmumu_cosAlpha[tree.BToKmumu_sel_index],
-    print tree.BToKmumu_Lxy[tree.BToKmumu_sel_index],
-    print tree.BToKmumu_pt[tree.BToKmumu_sel_index],
-    print tree.BToKmumu_kaon_pt[tree.BToKmumu_sel_index]
-    '''
-         
+        bmassArray[iselectedCombination] = getValue(tree,"BToKmumu_mass",combinationIndex)
+        refSelArray[iselectedCombination] = 1. if refSelectionMu(tree,combinationIndex) else 0.
+ 
     truthArray = numpy.array([1. if isSignal else 0.],dtype=numpy.float32)
     
-    if (signalSelectionMu(tree)):
-        refSelArray = numpy.array([1.],dtype=numpy.float32)
-    else:
-        refSelArray = numpy.array([0.],dtype=numpy.float32)
+    return {
+        "feature":featureArray,
+        "scale":scaleArray,
+        "genIndex":genIndexArray,
+        "refSel":refSelArray,
+        "bmass":bmassArray,
+        "truth":truthArray
+    }
+    
+    
+def writeEvent(tree,index,writer,isSignal=False,isTestData=False,fCombination=-1,fixedLen=-1):
+    
+    if (not baseSelection(tree,isSignal)):
+        return False
+    
+    massVtxCLIndex=[]
+    selectedCombinations=[]
+    
+    for icombination in range(tree.nBToKmumu):
+        if not combinationSelection(tree,icombination,isSignal):
+            continue
+        massVtxCLIndex.append([-getValue(tree,"BToKmumu_CL_vtx",icombination),getValue(tree,"BToKmumu_mass",icombination),icombination])
+        selectedCombinations.append(icombination)
         
+    if len(selectedCombinations)==0:
+        return False
+        
+    massVtxCLIndexSortedByVtxCL = sorted(massVtxCLIndex,key=lambda elem: elem[0])    
+    selectedCombinationsSortedByVtxCL = map(lambda x:x[2],massVtxCLIndexSortedByVtxCL)
+
+    record = {}
+ 
+    Ncomb = len(selectedCombinationsSortedByVtxCL)
+    if fixedLen>0:
+        Ncomb = fixedLen
+    selectedCombinationsSortedByVtxCL = selectedCombinationsSortedByVtxCL[:Ncomb]
+    
+    #require that the gen-matched signal combination is within selected combinations
     if isSignal:
-        bmassArray = numpy.array([0.],dtype=numpy.float32)
-    else:
-        bmassArray = numpy.array([
-            getValue(tree,"BToKmumu_mass",tree.BToKmumu_sel_index)
-        ],dtype=numpy.float32)
+        genCombinationIndex = -1
+        for i,combinationIndex in enumerate(selectedCombinationsSortedByVtxCL):
+            if tree.BToKmumu_gen_index==combinationIndex:
+                genCombinationIndex = i
+                break
+          
+        #if genCombinationIndex<0:   
+        #    return False
+
+    
+
+    data = buildArrays(tree,Ncomb,selectedCombinationsSortedByVtxCL,isSignal=isSignal)
+    
+    if not numpy.all(numpy.isfinite(data["feature"])):
+        return False
     
     '''
     record = {
@@ -315,17 +293,29 @@ def writeEvent(tree,index,writer,isSignal=False,isTestData=False,fixedLen=-1):
     writer.write(example.SerializeToString())
     
     '''
-    writer["features"].append(featureArray)
-    writer["truth"].append(truthArray)
-    writer["refSel"].append(refSelArray)
-    writer["bmass"].append(bmassArray)
-    writer["scales"].append(scaleArray)
-    writer["genIndex"].append(genIndexArray)
+    writer["features"].append(data["feature"])
+    writer["truth"].append(data["truth"])
+    writer["refSel"].append(data["refSel"])
+    writer["bmass"].append(data["bmass"])
+    writer["scales"].append(data["scale"])
+    writer["genIndex"].append(data["genIndex"])
     
-    #writer["charges"].append(charges)
     
     return True
     
+    
+def writeTFRecord(writer,arrayDict,index):
+    record = {
+        "features":_float_feature(arrayDict["features"][index].flatten()),
+        "scales":_float_feature(arrayDict["scales"][index].flatten()),
+        "genIndex":_float_feature(arrayDict["genIndex"][index].flatten()),
+        "truth":_float_feature(arrayDict["truth"][index].flatten()),
+        "bmass":_float_feature(arrayDict["bmass"][index].flatten()),
+        "refSel":_float_feature(arrayDict["refSel"][index].flatten())
+    }
+    example = tf.train.Example(features=tf.train.Features(feature=record))
+    writer.write(example.SerializeToString())
+
 class Chain(object):
     def __init__(self,fileList):
         self._fileList = fileList
@@ -385,23 +375,15 @@ class Chain(object):
             return 0
         return self._buffer[k][self._currentEntry]
 
-def convert(outputFolder,signalChain,backgroundChain,repeatSignal=50,nBatch=1,batch=0,testFractionSignal=0.3,testFractionBackground=0.5,fixedLen=-1):
-    '''
-    if os.path.exists(rootFileName+".tfrecord.uncompressed"):
-        logging.info("exists ... "+rootFileName+".tfrecord.uncompressed -> skip")
-        return
-    '''
-    
-    #writerTrain = h5py.File(os.path.join(outputFolder,"train_%i_%i.hdf5"%(nBatch,batch)),'w')
-    #writerTest = h5py.File(os.path.join(outputFolder,"test_%i_%i.hdf5"%(nBatch,batch)),'w')
-   
-    #writerTrain = tf.python_io.TFRecordWriter(os.path.join(outputFolder,"train_%i_%i.tfrecord"%(nBatch,batch)),options=tf.python_io.TFRecordOptions(tf.python_io.TFRecordCompressionType.GZIP))
-    #writerTest = tf.python_io.TFRecordWriter(os.path.join(outputFolder,"test_%i_%i.tfrecord"%(nBatch,batch)),options=tf.python_io.TFRecordOptions(tf.python_io.TFRecordCompressionType.GZIP))
+def convert(outputFolder,signalChain,backgroundChain,repeatSignal=1,nBatch=1,batch=0,testFractionSignal=0.2,testFractionBackground=0.5,fixedLen=-1,addTF=True):
+
+    if addTF:
+        tfWriterTrain = tf.python_io.TFRecordWriter(os.path.join(outputFolder,"train_%i_%i.tfrecord"%(nBatch,batch)),options=tf.python_io.TFRecordOptions(tf.python_io.TFRecordCompressionType.GZIP))
+        tfWriterTest = tf.python_io.TFRecordWriter(os.path.join(outputFolder,"test_%i_%i.tfrecord"%(nBatch,batch)),options=tf.python_io.TFRecordOptions(tf.python_io.TFRecordCompressionType.GZIP))
     
     writerTrain = {
         "features":[],
         "scales":[],
-        #"charges":[],
         "genIndex":[],
         "truth":[],
         "bmass":[],
@@ -411,7 +393,6 @@ def convert(outputFolder,signalChain,backgroundChain,repeatSignal=50,nBatch=1,ba
     writerTest = {
         "features":[],
         "scales":[],
-        #"charges":[],
         "genIndex":[],
         "truth":[],
         "bmass":[],
@@ -446,7 +427,6 @@ def convert(outputFolder,signalChain,backgroundChain,repeatSignal=50,nBatch=1,ba
     startTime = time.time()
     
     for globalEntry in range(nSignalBatch+nBackgroundBatch):
-        
         if globalEntry%500==0:
             #print globalEntry
             print "processed: %.3f, written: train=%i/%i, test=%i/%i, preselection eff: %.1f%%/%.1f%% signal/background"%(
@@ -456,7 +436,7 @@ def convert(outputFolder,signalChain,backgroundChain,repeatSignal=50,nBatch=1,ba
                 100.*(nSignalWrittenTrain+nSignalWrittenTest)/signalEntry if signalEntry>0 else 0.,
                 100.*(nBackgroundWrittenTrain+nBackgroundWrittenTest)/backgroundEntry if backgroundEntry>0 else 0.,
             )
-        
+        '''
         #stop conversion if approaching timeout of 3h
         if globalEntry%100==0 and (((time.time()-startTime)/60./60.)>2.5):
             print "processed: %.3f, written: train=%i/%i, test=%i/%i, preselection eff: %.1f%%/%.1f%% signal/background"%(
@@ -468,7 +448,7 @@ def convert(outputFolder,signalChain,backgroundChain,repeatSignal=50,nBatch=1,ba
             )
             print "Forced stop after %5.3fh"%((time.time()-startTime)/60./60.)
             break
-        
+        '''
         #pseudo randomly choose signal or background
         h = myHash(globalEntry*23+batch*7)
         itree = (h+h/(nSignalBatch+nBackgroundBatch))%(nSignalBatch+nBackgroundBatch)
@@ -504,9 +484,15 @@ def convert(outputFolder,signalChain,backgroundChain,repeatSignal=50,nBatch=1,ba
                 if (writeEvent(backgroundChain,nSignalWrittenTest+nBackgroundWrittenTest,writerTest,isSignal=False,fixedLen=fixedLen)):
                     nBackgroundWrittenTest+=1 
                     
-    
-    #writerTrain.close()
-    #writerTest.close()
+                    
+    if addTF:
+        for i in range(len(writerTrain["features"])):
+            writeTFRecord(tfWriterTrain,writerTrain,i)
+        for i in range(len(writerTest["features"])):
+            writeTFRecord(tfWriterTest,writerTest,i)
+        
+        tfWriterTrain.close()
+        tfWriterTest.close()
     
     for k in writerTrain.keys():
         writerTrain[k] = numpy.stack(writerTrain[k],axis=0)
@@ -524,8 +510,8 @@ def convert(outputFolder,signalChain,backgroundChain,repeatSignal=50,nBatch=1,ba
     )
     
     
-    print "Total signal written: %i/%i/%i total/train/test, test frac: %.3f"%(nSignal,nSignalWrittenTrain,nSignalWrittenTest,100.*nSignalWrittenTest/(nSignalWrittenTest+nSignalWrittenTrain))
-    print "Total background written: %i/%i/%i total/train/test, test frac: %.3f"%(nBackground,nBackgroundWrittenTrain,nBackgroundWrittenTest,100.*nBackgroundWrittenTest/(nBackgroundWrittenTest+nBackgroundWrittenTrain))
+    print "Total signal written: %i/%i/%i total/train/test, test frac: %.3f"%(signalEntry,nSignalWrittenTrain,nSignalWrittenTest,100.*nSignalWrittenTest/(nSignalWrittenTest+nSignalWrittenTrain))
+    print "Total background written: %i/%i/%i total/train/test, test frac: %.3f"%(backgroundEntry,nBackgroundWrittenTrain,nBackgroundWrittenTest,100.*nBackgroundWrittenTest/(nBackgroundWrittenTest+nBackgroundWrittenTrain))
     print "Overlap signal train/test: %i"%(len(uniqueSignalTrainEntries.intersection(uniqueSignalTestEntries)))
 
 import argparse
@@ -538,28 +524,26 @@ parser.add_argument('-o','--output', type=str, dest='output', help="Ouput folder
 args = parser.parse_args()
 
 
-signalFiles = []
+signalFiles = [
+    '/vols/cms/vc1116/BParking/ntuPROD/BPH_MC_Ntuple/ntu_PR36_BPH_MC_BuToK_ToMuMu.root'
+]
 
-for f in os.listdir("/vols/cms/vc1116/BParking/ntuPROD/mc_BToKmumuNtuple/PR27_BToKmumu"):
-    if re.match("\w+.root",f):
-        fullFilePath = os.path.join("/vols/cms/vc1116/BParking/ntuPROD/mc_BToKmumuNtuple/PR27_BToKmumu",f)
-        signalFiles.append(fullFilePath)
 
 backgroundFiles = []
 
 for folder in [
-    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR27_BToKmumu/A1",
-    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR27_BToKmumu/A2",
-    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR27_BToKmumu/A3",
-    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR27_BToKmumu/A4",
-    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR27_BToKmumu/A5",
-    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR27_BToKmumu/A6",
+    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/A1",
+    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/A2",
+    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/A3",
+    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/A4",
+    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/A5",
+    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/A6",
     
-    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR27_BToKmumu/B1",
-    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR27_BToKmumu/B2",
-    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR27_BToKmumu/B3",
-    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR27_BToKmumu/B4",
-    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR27_BToKmumu/B5",
+    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/B1",
+    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/B2",
+    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/B3",
+    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/B4",
+    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/B5",
 ]:
     for f in os.listdir(folder):
         if re.match("\w+.root",f):
@@ -607,9 +591,9 @@ print "bkg slice: ",batchStartBackground,"-",batchEndBackground,"/",len(backgrou
 #sys.exit(1)
 signalChain = Chain(signalFiles)
 backgroundChain = Chain(backgroundFilesBatched[batchStartBackground:batchEndBackground])
-#backgroundChain = Chain([backgroundFiles[0][0]])
+#backgroundChain = Chain([backgroundFiles[0][0],backgroundFiles[1][0]])
 
-convert(args.output,signalChain,backgroundChain,repeatSignal=50,nBatch=args.n,batch=args.b,fixedLen=50)
+convert(args.output,signalChain,backgroundChain,repeatSignal=10,nBatch=args.n,batch=args.b,fixedLen=10)
 
 
 
