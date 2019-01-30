@@ -1,68 +1,69 @@
-from sklearn import metrics
-import matplotlib.pyplot as plt
-from reference_model import get_trained_model
-import numpy as np
-from sklearn import preprocessing
-from merge_files import merge_files
 import os
 import argparse
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "-p_out",
-    '--out_path',
-    default='/bill1/',
-    help="output path")
-parser.add_argument("-vtx", '--n_vertex', default=1, type=int, help="n_vertex")
-parser.add_argument("-p_in", '--in_path',
-                    default='/Users/mstoye/work/copy/mutrk', help="input path")
 
-parser.add_argument(
-    "-class",
-    '--weight_class',
-    default=1.,
-    type=float,
-    help="weight class")
-parser.add_argument(
-    "-regress",
-    '--weight_regress',
-    default=0.,
-    type=float,
-    help="weight regress")
+import numpy as np
+from sklearn import preprocessing
+from sklearn import metrics
+import matplotlib.pyplot as plt
+
+# importing my local files
+from reference_model import get_trained_model
+from merge_files import merge_files
+
+# parse arguments to make it steerable
+parser = argparse.ArgumentParser()
+parser.add_argument( "-p_out", '--out_path', default='/bill1/', 
+                    help="output path")
+parser.add_argument("-vtx", '--n_vertex', default=1, type=int,
+                    help="n_vertex")
+parser.add_argument("-p_in", '--in_path',
+                    default='/Users/mstoye/work/copy/mutrk',
+                    help="input path")
+parser.add_argument(    "-class",    '--weight_class',   default=1.,
+                    type=float, help="weight class")
+parser.add_argument( "-regress", '--weight_regress', default=0.,
+                    type=float, help="weight regress")
 
 parser.add_argument("-inv_grad", '--revert_grad', default=False, type=bool,
                     help="invert gratdient")
-
 args = parser.parse_args()
+
+# hide argparser below
 revert_grad = args.revert_grad
 n_vertex = args.n_vertex
 out_path = args.out_path
 path_name = args.in_path
 loss_weights = [args.weight_class, args.weight_regress]
 
-
+# if True it retrains, wlse it reads a model
 retrain = True  # train the NN (~20 min), otherwise it needs a model from disc.
+# name of the model for saving or loading
 model_files = 'selu_mode'
 
+# make the output directories
 os.mkdir(os.getcwd() + out_path)
 out_path = os.getcwd() + out_path
 
+###########################################
+# get the data !!! ########################
 
 (X_train, is_MC_train, ref_train, bmass_train, Y_train) = merge_files(
     path_name, 'train', n_vertex=n_vertex)
 (X_test, is_MC, ref_test, bmass_test, Y_test) = merge_files(
     path_name, 'test', n_vertex=n_vertex)
 
-
 # though shall preprocess (var = 1, mean = 0) for gradiend based learning!
 scaler = preprocessing.StandardScaler().fit(X_train)
 X_scaled_train = scaler.transform(X_train)
 X_scaled_test = scaler.transform(X_test)
 
+############################################
+
+
 # the below weights make sure that MC is not used for the second loss,
 # which is the mass regression
 background = 1 - is_MC_train
 all_events = np.ones(background.shape)
-print background.shape, ' ', all_events.shape
 weights = [all_events.ravel(), background.ravel()]
 
 
@@ -96,6 +97,10 @@ if retrain:
     print("Saved model to disk")
 
 
+##################################################
+### medel is trained/loaded, now we plot
+##################################################
+
 def plot_discriminator(i_vertex, score_NN_test, Y_test, is_MC):
 
     print 'plots for vertex ', i_vertex
@@ -128,8 +133,15 @@ for i_vertex in range(n_vertex):
 
     plot_discriminator(i_vertex, score_NN_test, Y_test, is_MC)
 
+##################################################
+### Now we plot the mass regression results 
+##################################################
+
+# only use first vertex
 x = res_mass_test[:, 0]
 y = bmass_test[:, 0]
+
+
 plt.figure(101)
 print 'True mean ', y.mean(
 ), ' would be best is nothing about mass is learned, but the sample mean'
