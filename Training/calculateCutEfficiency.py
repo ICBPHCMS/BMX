@@ -4,8 +4,59 @@ import os
 import time
 import numpy
 import math
+import random
 import re
 import uproot
+
+
+ROOT.gRandom.SetSeed(123)
+ROOT.gROOT.SetBatch(True)
+ROOT.gROOT.SetStyle("Plain")
+ROOT.gStyle.SetOptStat(0)
+ROOT.gStyle.SetOptFit(0)
+ROOT.gStyle.SetOptStat(0)
+ROOT.gStyle.SetOptTitle(0)
+
+# For the Pad:
+ROOT.gStyle.SetPadBorderMode(0)
+ROOT.gStyle.SetPadColor(ROOT.kWhite)
+ROOT.gStyle.SetPadGridX(True)
+ROOT.gStyle.SetPadGridY(True)
+ROOT.gStyle.SetGridColor(ROOT.kBlack)
+ROOT.gStyle.SetGridStyle(2)
+ROOT.gStyle.SetGridWidth(1)
+
+ROOT.gStyle.SetHatchesSpacing(1.3)
+ROOT.gStyle.SetHatchesLineWidth(2)
+
+# For the axis titles:
+ROOT.gStyle.SetTitleColor(1, "XYZ")
+ROOT.gStyle.SetTitleFont(43, "XYZ")
+ROOT.gStyle.SetTitleSize(30, "XYZ")
+ROOT.gStyle.SetTitleXOffset(1.2)
+ROOT.gStyle.SetTitleOffset(1.4, "YZ") # Another way to set the Offset
+
+# For the axis labels:
+ROOT.gStyle.SetLabelColor(1, "XYZ")
+ROOT.gStyle.SetLabelFont(43, "XYZ")
+ROOT.gStyle.SetLabelOffset(0.0077, "XYZ")
+ROOT.gStyle.SetLabelSize(28, "XYZ")
+
+# For the axis:
+ROOT.gStyle.SetTickLength(0.03, "Y")
+ROOT.gStyle.SetTickLength(0.05, "X")
+ROOT.gStyle.SetNdivisions(1005, "X")
+ROOT.gStyle.SetNdivisions(506, "Y")
+
+ROOT.gStyle.SetPadTickX(1)  # To get tick marks on the opposite side of the frame
+ROOT.gStyle.SetPadTickY(1)
+
+ROOT.gStyle.SetPaperSize(8.0*1.6,7.0*1.6)
+ROOT.TGaxis.SetMaxDigits(3)
+ROOT.gStyle.SetLineScalePS(2)
+
+ROOT.gStyle.SetPaintTextFormat("3.0f")
+
 
 class Chain(object):
     def __init__(self,fileList):
@@ -129,6 +180,10 @@ def baseSelectionMu(tree,isSignal):
     if (isSignal and tree.BToKmumu_gen_index<0):
         return False
         
+    #gen-matched combination needs to yield bmass
+    if (isSignal and (tree.BToKmumu_mass[tree.BToKmumu_gen_index]<5.15 or tree.BToKmumu_mass[tree.BToKmumu_gen_index]>5.45)):
+        return False
+        
     #guanarntees at least one combination surviving
     if (not combinationSelectionMu(tree,tree.BToKmumu_sel_index)):
         return False
@@ -207,6 +262,12 @@ def calculateEfficiency(chain,baseSelection,signalSelection,combinationSelection
     nPassBaseSelection = 0
     nPassSignalSelection = 0
     
+    #hist = ROOT.TH1F("nT"+str(random.random()),";#triplets;Events",50,0.5,50.5)
+    #hist.SetDirectory(0)
+    
+    hist = ROOT.TH1F("nB"+str(random.random()),";Index of gen-matched triplet;Normalized Events",16,-0.5,15.5)
+    hist.SetDirectory(0)
+    
     if isSignal:
         combIndexDict = {}
     
@@ -225,6 +286,7 @@ def calculateEfficiency(chain,baseSelection,signalSelection,combinationSelection
         if len(selectedCombIndicesCLvtxPairs)==0:
             continue
             
+        #hist.Fill(len(selectedCombIndicesCLvtxPairs))
         nPassBaseSelection+=1
             
         selectedCombIndicesCLvtxPairsSorted = sorted(selectedCombIndicesCLvtxPairs,key=lambda elem: -elem[1])
@@ -239,6 +301,9 @@ def calculateEfficiency(chain,baseSelection,signalSelection,combinationSelection
             if not combIndexDict.has_key(genIndex):
                 combIndexDict[genIndex] = 0
             combIndexDict[genIndex]+=1
+            
+            
+            hist.Fill(genIndex)
         
         if signalSelection(chain,isSignal):
             nPassSignalSelection+=1
@@ -251,7 +316,7 @@ def calculateEfficiency(chain,baseSelection,signalSelection,combinationSelection
                 continue
             culum+=combIndexDict[icomb]
             print icomb,1.*culum/s
-    return nEvents,nPassBaseSelection,nPassSignalSelection
+    return nEvents,nPassBaseSelection,nPassSignalSelection,hist
     
    
 
@@ -259,17 +324,17 @@ backgroundFiles = []
 
 for folder in [
     "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/A1",
-    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/A2",
-    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/A3",
-    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/A4",
-    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/A5",
-    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/A6",
+    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/A2",
+    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/A3",
+    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/A4",
+    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/A5",
+    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/A6",
     
-    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/B1",
-    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/B2",
-    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/B3",
-    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/B4",
-    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/B5",
+    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/B1",
+    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/B2",
+    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/B3",
+    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/B4",
+    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR35_BToKmumu/B5",
 ]:
     for f in os.listdir(folder):
         if re.match("\w+.root",f):
@@ -277,7 +342,7 @@ for folder in [
 
             backgroundFiles.append(fullFilePath)
             
-#backgroundChain = Chain(backgroundFiles[0:20])
+#backgroundChain = Chain(backgroundFiles[0:60])
 
 signalFilesMu = [
     #'/vols/cms/vc1116/BParking/ntuPROD/mc_BToKmumuNtuple/ntu_mc_BToKmumu_PR27.root',
@@ -287,7 +352,7 @@ signalFilesMu = [
         
 signalChainMu = Chain(signalFilesMu)
 
-nEvents,nPassBaseSelection,nPassSignalSelection = calculateEfficiency(
+nEvents,nPassBaseSelection,nPassSignalSelection,histSignal = calculateEfficiency(
     signalChainMu,
     baseSelection=baseSelectionMu,
     signalSelection=signalSelectionMu,
@@ -299,6 +364,8 @@ nEvents,nPassBaseSelection,nPassSignalSelection = calculateEfficiency(
     isSignal=True
 )
 print "signal mu",nEvents,nPassBaseSelection,nPassSignalSelection,100.*nPassBaseSelection/nEvents,"%",100.*nPassSignalSelection/nPassBaseSelection,"%"
+
+
 '''
 signalFilesEle = []
 for f in os.listdir("/vols/cms/tstreble/BPH/BToKee_ntuple/BToKee_18_09_07_elechargefix/"):
@@ -320,9 +387,8 @@ nEvents,nPassBaseSelection,nPassSignalSelection = calculateEfficiency(
 )
 print "signal ele",nEvents,nPassBaseSelection,nPassSignalSelection,100.*nPassBaseSelection/nEvents,"%",100.*nPassSignalSelection/nPassBaseSelection,"%"
 '''
-
 '''
-nEvents,nPassBaseSelection,nPassSignalSelection = calculateEfficiency(
+nEvents,nPassBaseSelection,nPassSignalSelection,histBackground = calculateEfficiency(
     backgroundChain,
     baseSelection=baseSelectionMu,
     signalSelection=signalSelectionMu,
@@ -334,5 +400,25 @@ nEvents,nPassBaseSelection,nPassSignalSelection = calculateEfficiency(
 )
 print "background mu",nEvents,nPassBaseSelection,nPassSignalSelection,100.*nPassBaseSelection/nEvents,"%",100.*nPassSignalSelection/nPassBaseSelection,"%"
 '''
-
+histSignal.Scale(1./histSignal.Integral())
+histSignal.SetLineColor(ROOT.kOrange+7)
+histSignal.SetLineWidth(2)
+'''
+histBackground.Scale(1./histBackground.Integral())
+histBackground.SetLineColor(ROOT.kViolet+1)
+histBackground.SetLineWidth(2)
+'''
+cv = ROOT.TCanvas("cv","",800,650)
+cv.SetLeftMargin(0.125)
+cv.SetRightMargin(0.03)
+cv.SetTopMargin(0.08)
+cv.SetBottomMargin(0.115)
+cv.SetLogy(1)
+axis = ROOT.TH2F("axis",";#triplets;Normalized events",
+    50,-0.5,15.5,40,0.01,1#1.4*max(map(lambda x:x.GetMaximum(),[histSignal,histBackground]))
+)
+#axis.Draw("AXIS")
+histSignal.Draw("HISTSame")
+#histBackground.Draw("HISTSame")
+cv.Print("nIndex.pdf")
 

@@ -13,7 +13,7 @@ from scipy.interpolate import interp1d
 
 from sklearn import metrics
 
-from network_dense import Network
+from network import Network
 
 ROOT.gRandom.SetSeed(123)
 ROOT.gROOT.SetBatch(True)
@@ -70,22 +70,22 @@ def readFileMultiEntryAhead(filenameQueue, nBatches=200):
     #key is just a dataset identifier set by the reader
     #rawData is of type string
     
-    ncombinations = 50
-    nfeatures = 25
+    ncombinations = 10
+    nfeatures = 28
     nscales = 2
-    nveto = 1
     featureList = {
         'truth': tf.FixedLenFeature([1], tf.float32),
         'features': tf.FixedLenFeature([ncombinations*nfeatures], tf.float32),
         'genIndex': tf.FixedLenFeature([ncombinations+1], tf.float32),
         'scales': tf.FixedLenFeature([ncombinations*nscales], tf.float32),
-        'veto': tf.FixedLenFeature([1], tf.float32),
-        'refSel': tf.FixedLenFeature([1], tf.float32),
+        'bmass': tf.FixedLenFeature([ncombinations], tf.float32),
+        'refSel': tf.FixedLenFeature([ncombinations], tf.float32),
     }
     
     parsedDataBatch = tf.parse_example(rawDataBatch, features=featureList)
-    
     parsedDataBatch['features']=tf.reshape(parsedDataBatch['features'],[-1,ncombinations,nfeatures])
+    parsedDataBatch['bmass']=tf.reshape(parsedDataBatch['bmass'],[-1,ncombinations,1])
+    parsedDataBatch['refSel']=tf.reshape(parsedDataBatch['refSel'],[-1,ncombinations,1])
     parsedDataBatch['scales']=tf.reshape(parsedDataBatch['scales'],[-1,ncombinations,nscales])
     return parsedDataBatch
                         
@@ -486,7 +486,7 @@ def drawDist(name,signalHists,backgroundHists):
     cv.Print(name+".root")
         
         
-basepath = "/vols/cms/mkomm/BPH/training4/"
+basepath = "/vols/cms/mkomm/BPH/training12/"
 
 trainFiles = []
 testFiles = []
@@ -516,8 +516,8 @@ testFiles = sorted(testFiles,key=natural_keys)
 
 
 '''
-trainFiles = trainFiles[0:20]
-testFiles = testFiles[0:50]
+trainFiles = trainFiles[0:1]
+testFiles = testFiles[0:1]
 '''
 #print trainFiles
         
@@ -525,8 +525,8 @@ print "found ",len(trainFiles),"/",len(testFiles)," train/test files"
 #sys.exit(1)
 
 
-batchSizeTrain = 2000
-batchSizeTest = 5000
+batchSizeTrain = 5000
+batchSizeTest = 10000
 
 def find_nearest_index(array,value):
     return (numpy.abs(array - value)).argmin()
@@ -538,7 +538,7 @@ def setup_model(learning_rate):
     #net = NetworkFullDense()
 
 
-    inputs = keras.layers.Input(shape=(50,25))
+    inputs = keras.layers.Input(shape=(10,28))
     #bkgEstimate = keras.layers.Input(shape=(1,))
     prediction = net.getDiscriminant(inputs)
     '''
@@ -606,10 +606,10 @@ def train_test_cycle(epoch,model,input_queue,doTrain=False,doPredict=False,doReg
                 )+(batchVal["truth"][:,0]>0.5)*1.
                 '''
                 
-                veto = (batchVal["truth"][:,0]<0.5)*(
-                    (numpy.logical_or((batchVal["veto"][:,0]<5.),(batchVal["veto"][:,0]>5.6)))*1.)+\
-                    (batchVal["truth"][:,0]>0.5)*1.
-                #veto = numpy.ones(batchSize)
+                #veto = (batchVal["truth"][:,0]<0.5)*(
+                #    ((batchVal["bmass"][:,0,0]>5.6))*1.)+\
+                #    (batchVal["truth"][:,0]>0.5)*1.
+                veto = numpy.ones(batchSize)
             else:
                 veto = numpy.ones(batchSize)
             if doWeight:
@@ -681,7 +681,7 @@ def train_test_cycle(epoch,model,input_queue,doTrain=False,doPredict=False,doReg
                             wpValue = bMass.GetYaxis().GetBinCenter(wpBin+1)
                             if predict[i][0]>wpValue:
                                 mcEff["wp"+str(wpBin+1)]+=1.
-                        if batchVal["refSel"][i,0]>0.5:
+                        if batchVal["refSel"][i,0,0]>0.5:
                             mcEff["ref"]+=1.
 
                     else:
@@ -695,14 +695,14 @@ def train_test_cycle(epoch,model,input_queue,doTrain=False,doPredict=False,doReg
                         for wpBin in range(bMass.GetYaxis().GetNbins()):
                             wpValue = bMass.GetYaxis().GetBinCenter(wpBin+1)
                             if predict[i][0]>wpValue:
-                                bMass.Fill(batchVal["veto"][i,0],wpValue)
+                                bMass.Fill(batchVal["bmass"][i,0],wpValue)
                                 if veto[i]>0.5:
                                     bkgEff["wp"+str(wpBin+1)]+=1.
-                        if batchVal["refSel"][i,0]>0.5 and veto[i]>0.5:
+                        if batchVal["refSel"][i,0,0]>0.5 and veto[i]>0.5:
                             bkgEff["ref"]+=1.
                                 
-                        if batchVal["refSel"][i,0]>0.5:
-                            bMass.Fill(batchVal["veto"][i,0],-1)
+                        if batchVal["refSel"][i,0,0]>0.5:
+                            bMass.Fill(batchVal["bmass"][i,0,0],-1)
                                 
                 
                     
@@ -747,7 +747,7 @@ def train_test_cycle(epoch,model,input_queue,doTrain=False,doPredict=False,doReg
     
     return result
 
-outputFolder = "result_peak"
+outputFolder = "result_new5"
 
 fstat = open(os.path.join(outputFolder,"model_stat.txt"),"w")
 fstat.close()
@@ -803,8 +803,9 @@ for epoch in range(1,51):
     coord = tf.train.Coordinator()
     threads = tf.train.start_queue_runners(sess=sess, coord=coord)
     
+    #print sess.run(trainBatch)
 
-    resultTrain = train_test_cycle(epoch,model,trainBatch,doTrain=True,doPredict=False,doRegularization=True,doWeight=True,mode="Training",regTargets=regTargets)
+    resultTrain = train_test_cycle(epoch,model,trainBatch,doTrain=True,doPredict=False,doRegularization=False,doWeight=True,mode="Training",regTargets=regTargets)
     
     model.save_weights(os.path.join(outputFolder,"weights_%i.hdf5"%epoch))
     

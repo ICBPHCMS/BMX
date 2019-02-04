@@ -155,6 +155,10 @@ def baseSelection(tree,isSignal):
     if (isSignal and tree.BToKmumu_gen_index<0):
         return False
         
+    #gen-matched combination needs to yield bmass
+    if (isSignal and (tree.BToKmumu_mass[tree.BToKmumu_gen_index]<5.15 or tree.BToKmumu_mass[tree.BToKmumu_gen_index]>5.45)):
+        return False
+        
     if not combinationSelection(tree,tree.BToKmumu_sel_index,isSignal):
         return False
         
@@ -269,8 +273,8 @@ def writeEvent(tree,index,writer,isSignal=False,isTestData=False,fCombination=-1
                 genCombinationIndex = i
                 break
           
-        #if genCombinationIndex<0:   
-        #    return False
+        if genCombinationIndex<0:   
+            return False
 
     
 
