@@ -126,7 +126,7 @@ def plot_discriminator(i_vertex, score_NN_test, Y_test, is_MC):
     plt.xlabel('score NN')
     plt.legend()
     plt.savefig(out_path + 'score_simulation' + str(i_vertex) + '.png')
-    plt.show()
+    #plt.show()
 
 
 for i_vertex in range(n_vertex):
