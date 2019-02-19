@@ -8,6 +8,7 @@ import random
 import h5py
 import re
 import time
+import pandas
 import uproot
 
 def getValue(tree,field,n):
@@ -156,7 +157,7 @@ featuresPerCombination = [
     #B features
     ["B_pt",lambda i,tree: getValue(tree,"BToKstll_B_pt",i)],
     ["B_eta",lambda i,tree: math.fabs(getValue(tree,"BToKstll_B_eta",i))],
-    ["alpha",lambda i,tree: getValue(tree,"BToKstll_B_cosAlpha",i)], #angle between B and (SV-PV)
+    ["cos_alpha",lambda i,tree: getValue(tree,"BToKstll_B_cosAlpha",i)], #angle between B and (SV-PV)
     ["Lxy",lambda i,tree: getValue(tree,"BToKstll_B_Lxy",i)], #significance of displacement
     ["ctxy",lambda i,tree: getValue(tree,"BToKstll_B_ctxy",i)],
     ["vtx_CL",lambda i,tree: getValue(tree,"BToKstll_B_CL_vtx",i)],
@@ -224,7 +225,7 @@ def refSelectionMu(tree,icombination):
     
     
 def buildArrays(tree,Ncomb,selectedCombinationsSortedByVtxCL,isSignal=False):
-    gobalFeatureArray = numpy.zeros((Ncomb,len(globalFeatures)),dtype=numpy.float32)
+    gobalFeatureArray = numpy.zeros(len(globalFeatures),dtype=numpy.float32)
     combinationFeatureArray = numpy.zeros((Ncomb,len(featuresPerCombination)),dtype=numpy.float32)
     #one hot encoding of correct triplet (last one if no triplet is correct or background)
     genIndexArray = numpy.zeros((Ncomb+1),dtype=numpy.float32)
@@ -246,26 +247,25 @@ def buildArrays(tree,Ncomb,selectedCombinationsSortedByVtxCL,isSignal=False):
         genCombinationIndex = Ncomb
     genIndexArray[genCombinationIndex] = 1.
     
+    for ifeature in range(len(globalFeatures)):
+        value = globalFeatures[ifeature][1](tree)
+        gobalFeatureArray[ifeature]=value
+    
     for iselectedCombination,combinationIndex in enumerate(selectedCombinationsSortedByVtxCL):
         if iselectedCombination>=Ncomb:
             break
-        
-        for ifeature in range(len(globalFeatures)):
-            value = globalFeatures[ifeature][1](tree)
-            gobalFeatureArray[ifeature]=value
         for icombfeature in range(len(featuresPerCombination)):
-            value = featuresPerCombination[ifeature][1](combinationIndex,tree)
-            combinationFeatureArray[iselectedCombination,ifeature]=value
+            value = featuresPerCombination[icombfeature][1](combinationIndex,tree)
+            combinationFeatureArray[iselectedCombination,icombfeature]=value
        
-        
         bmassArray[iselectedCombination] = getValue(tree,"BToKstll_B_mass",combinationIndex)
         refSelArray[iselectedCombination] = 1. if refSelectionMu(tree,combinationIndex) else 0.
  
-    truthArray = numpy.array([1. if isSignal else 0.],dtype=numpy.float32)
+    truthArray = numpy.array(1. if isSignal else 0.,dtype=numpy.float32)
     
     return {
-        "feature":combinationFeatureArray,
-        "global":gobalFeatureArray,
+        "combinationFeatures":combinationFeatureArray,
+        "globalFeatures":gobalFeatureArray,
         "genIndex":genIndexArray,
         "refSel":refSelArray,
         "bmass":bmassArray,
@@ -320,15 +320,15 @@ def writeEvent(tree,index,writer,isSignal=False,isTestData=False,fCombination=-1
 
     data = buildArrays(tree,Ncomb,selectedCombinationsSortedByVtxCL,isSignal=isSignal)
     
-    if not numpy.all(numpy.isfinite(data["feature"])):
-        return False
     
-
-    writer["features"].append(data["feature"])
-    writer["truth"].append(data["truth"])
-    writer["refSel"].append(data["refSel"])
-    writer["bmass"].append(data["bmass"])
-    writer["genIndex"].append(data["genIndex"])
+    for k in data.keys():
+        if not numpy.all(numpy.isfinite(data[k])):
+            print "Warning - found non-finite data"
+            return False
+    
+    for k in data.keys():
+        numpy.nan_to_num(data[k], copy=False)
+        writer[k].append(data[k])
     
     
     return True
@@ -345,20 +345,28 @@ class Chain(object):
         self._currentFileName = ""
         self._currentEntry = 0
         self._currentOffset = 0
+        self._currentSize = 0
+        self._prefetchSize = 10000
         self._buffer = {}
         
         self._fileEventPairs = []
         for i,f in enumerate(self._fileList):
             try:
                 print i,'/',len(self._fileList),'...',f
-                rootFile = uproot.open(f,localsource=uproot.FileSource.defaults)
+                rootFile = self.OpenFile(f)
                 tree = rootFile["Events"]
                 nevents = len(tree)
                 self._fileEventPairs.append([f,nevents])
-            except:
+            except Exception,e:
                 print "Error - cannot open file: ",f
+                print e
                 
         self._sumEvents = sum(map(lambda x:x[1],self._fileEventPairs))
+        
+    def OpenFile(self, path):
+        return uproot.open(path,localsource=lambda f: 
+            uproot.FileSource(f,chunkbytes=8*1024,limitbytes=1024**2)
+        )
             
     def GetEntries(self):
         return self._sumEvents
@@ -382,42 +390,61 @@ class Chain(object):
             for e in range(len(self._fileEventPairs)):
                 if s<=i and (s+self._fileEventPairs[e][1])>i:
                     print "opening",self._fileEventPairs[e][0]
-                    self._currentFile = uproot.open(self._fileEventPairs[e][0],localsource=uproot.FileSource.defaults)
+                    self._currentFile = self.OpenFile(self._fileEventPairs[e][0])
                     self._currentFileName = self._fileEventPairs[e][0]
                     self._currentTree = self._currentFile["Events"]
+                    self._currentSize = len(self._currentTree)
                     self._currentOffset = s
                     self._currentEntry = i-self._currentOffset
                     break
                 s+=self._fileEventPairs[e][1]
+                
+    def prefetchBranch(self,k):
+        maxPrefetch = min(self._currentEntry+self._prefetchSize,self._currentSize)
+        self._buffer[k] = {
+            "data": self._currentTree[k].array(entrystart=self._currentEntry, entrystop=maxPrefetch),
+            "min":self._currentEntry,
+            "max":maxPrefetch
+        }
+        '''
+        print "loading branch ",k,
+        print " with entries ",len(self._buffer[k]["data"]),
+        print " (tree len=%i, fetched=[%i, %i])"%(self._currentSize,self._currentEntry,maxPrefetch)
+        '''
                     
     def __getattr__(self,k):
+        if self._currentEntry>self._currentSize:
+            print "Error - at end of file: ",self._currentEntry,self._currentSize
+            return
+            
         if not self._buffer.has_key(k):
-            self._buffer[k] = self._currentTree[k].array()
-            #print "loading branch ",k," with entries ",len(self._buffer[k])," and shape ",self._buffer[k][self._currentEntry].shape,", (tree len=",len(self._currentTree),")"
-        if self._currentEntry>=len(self._buffer[k]):
-            print "Error - buffer for branch '",k,"' only ",len(self._buffer[k])," but requested entry ",self._currentEntry," (tree len=",len(self._currentTree),")"
-            return 0
-        return self._buffer[k][self._currentEntry]
-
+            self.prefetchBranch(k)
+        elif self._currentEntry<self._buffer[k]["min"] or self._currentEntry>=self._buffer[k]["max"]:
+            self.prefetchBranch(k)
+        
+        bufferOffset = self._currentEntry-self._buffer[k]["min"]
+        #print "reading ",k,"entry=%i, offset=%i"%(self._currentEntry,bufferOffset)
+        return self._buffer[k]["data"][bufferOffset]
+        
 def convert(outputFolder,signalChain,backgroundChain,repeatSignal=1,nBatch=1,batch=0,testFractionSignal=0.2,testFractionBackground=0.5,fixedLen=-1):
 
      
     writerTrain = {
-        "features":[],
-        "scales":[],
+        "combinationFeatures":[],
+        "globalFeatures":[],
         "genIndex":[],
-        "truth":[],
+        "refSel":[],
         "bmass":[],
-        "refSel":[]
+        "truth":[]
     }
     
     writerTest = {
-        "features":[],
-        "scales":[],
+        "combinationFeatures":[],
+        "globalFeatures":[],
         "genIndex":[],
-        "truth":[],
+        "refSel":[],
         "bmass":[],
-        "refSel":[]
+        "truth":[]
     }
     
     
@@ -448,7 +475,7 @@ def convert(outputFolder,signalChain,backgroundChain,repeatSignal=1,nBatch=1,bat
     startTime = time.time()
     
     for globalEntry in range(nSignalBatch+nBackgroundBatch):
-        if globalEntry%500==0:
+        if globalEntry%1000==0:
             #print globalEntry
             print "processed: %.3f, written: train=%i/%i, test=%i/%i, preselection eff: %.1f%%/%.1f%% signal/background"%(
                 100.*globalEntry/(nSignalBatch+nBackgroundBatch),
@@ -504,12 +531,23 @@ def convert(outputFolder,signalChain,backgroundChain,repeatSignal=1,nBatch=1,bat
                 if (writeEvent(backgroundChain,nSignalWrittenTest+nBackgroundWrittenTest,writerTest,isSignal=False,fixedLen=fixedLen)):
                     nBackgroundWrittenTest+=1 
                     
-
-    for k in writerTrain.keys():
-        writerTrain[k] = numpy.stack(writerTrain[k],axis=0)
-    for k in writerTest.keys():
-        writerTest[k] = numpy.stack(writerTest[k],axis=0)
     
+    for k in writerTrain.keys():
+        if len(writerTrain[k])==0:
+            print "Warning - training data ",k," empty -> skip"
+            del writerTrain[k]
+            continue
+        writerTrain[k] = numpy.stack(writerTrain[k],axis=0)
+        #print "saving train data ",k," with shape ",writerTrain[k].shape
+        
+    for k in writerTest.keys():
+        if len(writerTest[k])==0:
+            print "Warning - testing data ",k," empty -> skip"
+            del writerTest[k]
+            continue
+        writerTest[k] = numpy.stack(writerTest[k],axis=0)
+        #print "saving test data ",k," with shape ",writerTest[k].shape
+    '''
     numpy.savez_compressed(
         os.path.join(outputFolder,"train_%i_%i.npz"%(nBatch,batch)),
         **writerTrain
@@ -520,6 +558,60 @@ def convert(outputFolder,signalChain,backgroundChain,repeatSignal=1,nBatch=1,bat
         **writerTest
     )
     
+    
+    #store = pandas.HDFStore(os.path.join(outputFolder,"train_%i_%i.hdf5"%(nBatch,batch)))
+    
+    dataframe = pandas.DataFrame()
+    
+    for row in range(writerTrain['truth'].shape[0]):
+        dataRow = {}
+        for k in writerTrain.keys():
+            if k=="combinationFeatures":
+                for i,feature in enumerate(featuresPerCombination):
+                    dataRow[feature[0]] = writerTrain[k][row,:,i]
+            elif k=="globalFeatures":
+                for i,feature in enumerate(globalFeatures):
+                    dataRow[feature[0]] = writerTrain[k][row,i]
+            else:
+                dataRow[k] = writerTrain[k][row]
+        dataframe = dataframe.append([dataRow])
+    dataframe.to_hdf(os.path.join(outputFolder,"train_%i_%i.hdf5"%(nBatch,batch)),"data",mode='w',table=True)
+    
+    #store.put("globalFeatures",dataframe)    
+     
+    #store.close()
+    '''
+    with h5py.File(os.path.join(outputFolder,"train_%i_%i.hdf5"%(nBatch,batch)),'w') as  h5Train:
+        for k in writerTrain.keys():
+            if k=="combinationFeatures":
+                group = h5Train.create_group(k)
+                for i,feature in enumerate(featuresPerCombination):
+                    group.create_dataset(featuresPerCombination[i][0], data=writerTrain[k][:,:,i])
+                    print "train hdf5 writing ",k,"/",featuresPerCombination[i][0],writerTrain[k][:,:,i].shape
+            elif k=="globalFeatures":
+                group = h5Train.create_group(k)
+                for i,feature in enumerate(globalFeatures):
+                    group.create_dataset(globalFeatures[i][0], data=writerTrain[k][:,i])
+                    print "train hdf5 writing ",k,"/",globalFeatures[i][0],writerTrain[k][:,i].shape
+            else:
+                print "train hdf5 writing ",k,writerTrain[k].shape
+                h5Train.create_dataset(k, data=writerTrain[k])
+    
+    with h5py.File(os.path.join(outputFolder,"test_%i_%i.hdf5"%(nBatch,batch)),'w') as h5Test:
+        for k in writerTest.keys():
+            if k=="combinationFeatures":
+                group = h5Test.create_group(k)
+                for i,feature in enumerate(featuresPerCombination):
+                    group.create_dataset(featuresPerCombination[i][0], data=writerTest[k][:,:,i])
+                    print "test hdf5 writing ",k,"/",featuresPerCombination[i][0],writerTest[k][:,:,i].shape
+            elif k=="globalFeatures":
+                group = h5Test.create_group(k)
+                for i,feature in enumerate(globalFeatures):
+                    group.create_dataset(globalFeatures[i][0], data=writerTest[k][:,i])
+                    print "test hdf5 writing ",k,"/",globalFeatures[i][0],writerTest[k][:,i].shape
+            else:
+                print "test hdf5 writing ",k,writerTest[k].shape
+                h5Test.create_dataset(k, data=writerTest[k])
     
     print "Total signal written: %i/%i/%i total/train/test, test frac: %.3f"%(signalEntry,nSignalWrittenTrain,nSignalWrittenTest,100.*nSignalWrittenTest/(nSignalWrittenTest+nSignalWrittenTrain))
     print "Total background written: %i/%i/%i total/train/test, test frac: %.3f"%(backgroundEntry,nBackgroundWrittenTrain,nBackgroundWrittenTest,100.*nBackgroundWrittenTest/(nBackgroundWrittenTest+nBackgroundWrittenTrain))
@@ -536,8 +628,8 @@ args = parser.parse_args()
 
 
 signalFiles = [
-    #'/vols/cms/vc1116/BParking/ntuPROD/BPH_MC_Ntuple/ntu_PR38_LTT_BPH_MC_BuToK_ToMuMu_1.root',
-    #'/vols/cms/vc1116/BParking/ntuPROD/BPH_MC_Ntuple/ntu_PR38_LTT_BPH_MC_BuToK_ToMuMu_2.root',
+    '/vols/cms/vc1116/BParking/ntuPROD/BPH_MC_Ntuple/ntu_PR38_LTT_BPH_MC_BuToK_ToMuMu_1.root',
+    '/vols/cms/vc1116/BParking/ntuPROD/BPH_MC_Ntuple/ntu_PR38_LTT_BPH_MC_BuToK_ToMuMu_2.root',
     '/vols/cms/vc1116/BParking/ntuPROD/BPH_MC_Ntuple/ntu_PR38_LTT_BPH_MC_BuToK_ToMuMu.root'
 ]
 
@@ -580,9 +672,9 @@ print "bkg slice: ",batchStartBackground,"-",batchEndBackground,"/",len(backgrou
 #sys.exit(1)
 signalChain = Chain(signalFiles)
 backgroundChain = Chain(backgroundFilesBatched[batchStartBackground:batchEndBackground])
-#backgroundChain = Chain([backgroundFiles[0][0],backgroundFiles[1][0]])
+#backgroundChain = Chain([backgroundFiles[0][0]])#,backgroundFiles[1][0]])
 
-convert(args.output,signalChain,backgroundChain,repeatSignal=50,nBatch=args.n,batch=args.b,fixedLen=10)
+convert(args.output,signalChain,backgroundChain,repeatSignal=25,nBatch=args.n,batch=args.b,fixedLen=10)
 
 
 
