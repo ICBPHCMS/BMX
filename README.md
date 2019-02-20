@@ -1,6 +1,8 @@
 # BMX
 B discriMinant eXtreme
 
+![status](https://api.travis-ci.org/ICBPHCMS/BMX.svg?branch=master)
+
 ## Setup the environment
 The following steps have to be done only once. It will setup an [anaconda](https://www.anaconda.com/) and install the required software packages. These are amongst others [keras v2.1.5](https://keras.io/) and [tensorflow v1.6](https://www.tensorflow.org/).
 * A single environment for CPU only: ```source Env/setupEnvCPU.sh  <install_dir>```
