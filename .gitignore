@@ -1,0 +1,11 @@
+*.pyc
+*.so
+*.npz
+*.hdf5
+*.pdf
+*.png
+*.html
+*.log
+*.*
+*/log/*
+Env/env/*

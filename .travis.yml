@@ -1,0 +1,23 @@
+sudo: required
+language: cpp
+compiler:
+  - gcc
+jobs:
+  include:
+    - stage: CPU-only env
+      script:
+        - Tests/testSetupCpuEnv.sh
+    - stage: Training
+      script:
+        - Tests/testSetupGpuEnv.sh
+    - stage: Unpack
+      script: 
+        - Tests/Env/testSetupCpuEnv.sh
+notifications:
+  email:
+    recipients:
+        - mkomm@cern.ch
+    on_success: change
+    on_failure: always
+
+
