@@ -76,7 +76,7 @@ function run_setup()
     echo "Installing graphviz"
     conda install -c anaconda graphviz --yes &>> $LOGFILE || return 1
     echo "Installing openssl"
-    conda install -c anaconda openssl --yes &>> $LOGFILE || return 1
+    conda install -c anaconda openssl=1.0.2p --yes &>> $LOGFILE || return 1
     echo "Installing root"
     conda install -c nlesc root-numpy=4.4.0 --yes &>> $LOGFILE || return 1
     conda update -f libstdcxx-ng --yes &>> $LOGFILE || return 1
@@ -109,7 +109,8 @@ function run_setup()
     pip install --no-cache-dir -r $SCRIPT_DIR/packages_gpu.pip &>> $LOGFILE || return 1
     echo "Installing graphviz"
     conda install -c anaconda graphviz --yes &>> $LOGFILE || return 1
-    
+    echo "Installing openssl"
+    conda install -c anaconda openssl=1.0.2p --yes &>> $LOGFILE || return 1
     #root needs to be installed after the pip packages because it seems to break yaml compilation
     echo "Installing root"
     conda install -c nlesc root-numpy=4.4.0 --yes &>> $LOGFILE || return 1
@@ -126,7 +127,6 @@ function run_setup()
     source deactivate &>> $LOGFILE || return 1
     
     rm -rf $INSTALL_ABSDIR/tmp &>> $LOGFILE
-
 }
 
 run_setup $1

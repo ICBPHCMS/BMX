@@ -8,7 +8,6 @@ import random
 import h5py
 import re
 import time
-import pandas
 import uproot
 
 def getValue(tree,field,n):
@@ -620,6 +619,8 @@ def convert(outputFolder,signalChain,backgroundChain,repeatSignal=1,nBatch=1,bat
 import argparse
 
 parser = argparse.ArgumentParser(description='Process some integers.')
+parser.add_argument('--mc', type=str, action='append', default=[], dest='mc', help="MC (=signal) folder")
+parser.add_argument('--data', type=str, action='append', default=[], dest='data', help="Data (=background) folder")
 parser.add_argument('-n', type=int, dest='n', help="Number of batches")
 parser.add_argument('-b', type=int, dest='b', help="Current batch")
 parser.add_argument('-o','--output', type=str, dest='output', help="Ouput folder")
@@ -628,24 +629,26 @@ args = parser.parse_args()
 
 
 signalFiles = [
-    '/vols/cms/vc1116/BParking/ntuPROD/BPH_MC_Ntuple/ntu_PR38_LTT_BPH_MC_BuToK_ToMuMu_1.root',
-    '/vols/cms/vc1116/BParking/ntuPROD/BPH_MC_Ntuple/ntu_PR38_LTT_BPH_MC_BuToK_ToMuMu_2.root',
-    '/vols/cms/vc1116/BParking/ntuPROD/BPH_MC_Ntuple/ntu_PR38_LTT_BPH_MC_BuToK_ToMuMu.root'
+    #'/vols/cms/vc1116/BParking/ntuPROD/BPH_MC_Ntuple/ntu_PR38_LTT_BPH_MC_BuToK_ToMuMu_1.root',
+    #'/vols/cms/vc1116/BParking/ntuPROD/BPH_MC_Ntuple/ntu_PR38_LTT_BPH_MC_BuToK_ToMuMu_2.root',
+    #'/vols/cms/vc1116/BParking/ntuPROD/BPH_MC_Ntuple/ntu_PR38_LTT_BPH_MC_BuToK_ToMuMu.root'
 ]
+
+
 
 
 backgroundFiles = []
 
 for folder in [
-    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR38_ltt_BToKmumu/A1",
-    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR38_ltt_BToKmumu/A2",
-    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR38_ltt_BToKmumu/A3",
-    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR38_ltt_BToKmumu/A4",
-    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR38_ltt_BToKmumu/A5",
-    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR38_ltt_BToKmumu/A6",
-    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR38_ltt_BToKmumu/B4",
-    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR38_ltt_BToKmumu/B5",
-    "/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR38_ltt_BToKmumu/D1",
+    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR38_ltt_BToKmumu/A1",
+    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR38_ltt_BToKmumu/A2",
+    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR38_ltt_BToKmumu/A3",
+    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR38_ltt_BToKmumu/A4",
+    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR38_ltt_BToKmumu/A5",
+    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR38_ltt_BToKmumu/A6",
+    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR38_ltt_BToKmumu/B4",
+    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR38_ltt_BToKmumu/B5",
+    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR38_ltt_BToKmumu/D1",
 ]:
     for f in os.listdir(folder):
         if re.match("\w+.root",f):

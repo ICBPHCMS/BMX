@@ -75,7 +75,7 @@ function run_setup()
     echo "Installing graphviz"
     conda install -c anaconda graphviz --yes &>> $LOGFILE || return 1
     echo "Installing openssl"
-    conda install -c anaconda openssl --yes &>> $LOGFILE || return 1
+    conda install -c anaconda openssl=1.0.2p --yes &>> $LOGFILE || return 1
     echo "Installing root"
     conda install -c nlesc root-numpy=4.4.0 --yes &>> $LOGFILE || return 1
     
