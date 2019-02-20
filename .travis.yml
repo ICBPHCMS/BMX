@@ -6,13 +6,13 @@ jobs:
   include:
     - stage: CPU-only env
       script:
-        - Tests/testSetupCpuEnv.sh
+        - travis_wait 30 Tests/testSetupCpuEnv.sh
     - stage: Training
       script:
-        - Tests/testSetupGpuEnv.sh
+        - travis_wait 30 Tests/testSetupFullEnv.sh
     - stage: Unpack
       script: 
-        - Tests/Env/testSetupCpuEnv.sh
+        - travis_wait 30 Tests/Env/testSetupCpuEnv.sh
 notifications:
   email:
     recipients:
