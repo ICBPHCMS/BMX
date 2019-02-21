@@ -4,9 +4,6 @@ compiler:
   - gcc
 jobs:
   include:
-    - stage: CPU-only env
-      script:
-        - travis_wait 30 Tests/testSetupCpuEnv.sh
     - stage: Training
       script:
         - travis_wait 30 Tests/testSetupFullEnv.sh
