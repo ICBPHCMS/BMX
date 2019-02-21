@@ -8,6 +8,7 @@ import random
 import h5py
 import re
 import time
+import glob
 import uproot
 
 def getValue(tree,field,n):
@@ -248,6 +249,11 @@ def buildArrays(tree,Ncomb,selectedCombinationsSortedByVtxCL,isSignal=False):
     
     for ifeature in range(len(globalFeatures)):
         value = globalFeatures[ifeature][1](tree)
+        if not numpy.isfinite(value):
+            print "Warning - skipped non-finite value for '"+globalFeatures[ifeature][0]+"' in %s"%(
+                "MC" if isSignal else "data"
+            )
+            return None
         gobalFeatureArray[ifeature]=value
     
     for iselectedCombination,combinationIndex in enumerate(selectedCombinationsSortedByVtxCL):
@@ -255,9 +261,20 @@ def buildArrays(tree,Ncomb,selectedCombinationsSortedByVtxCL,isSignal=False):
             break
         for icombfeature in range(len(featuresPerCombination)):
             value = featuresPerCombination[icombfeature][1](combinationIndex,tree)
+            if not numpy.isfinite(value):
+                print "Warning - skipped non-finite value for '"+featuresPerCombination[icombfeature][0]+"' in %s"%(
+                    "MC" if isSignal else "data"
+                )
+                return None
             combinationFeatureArray[iselectedCombination,icombfeature]=value
        
-        bmassArray[iselectedCombination] = getValue(tree,"BToKstll_B_mass",combinationIndex)
+        bmassValue = getValue(tree,"BToKstll_B_mass",combinationIndex)
+        if not numpy.isfinite(bmassValue):
+            print "Warning - skipped non-finite value for 'BToKstll_B_mass' in %s"%(
+                "MC" if isSignal else "data"
+            )
+            return None
+        bmassArray[iselectedCombination] = bmassValue
         refSelArray[iselectedCombination] = 1. if refSelectionMu(tree,combinationIndex) else 0.
  
     truthArray = numpy.array(1. if isSignal else 0.,dtype=numpy.float32)
@@ -272,7 +289,7 @@ def buildArrays(tree,Ncomb,selectedCombinationsSortedByVtxCL,isSignal=False):
     }
     
     
-def writeEvent(tree,index,writer,isSignal=False,isTestData=False,fCombination=-1,fixedLen=-1):
+def writeEvent(tree,index,writer,isSignal=False,isTestData=False,fCombination=-1,maxCombinations=-1):
     
     
     if (not baseSelection(tree,isSignal)):
@@ -300,8 +317,8 @@ def writeEvent(tree,index,writer,isSignal=False,isTestData=False,fCombination=-1
     record = {}
  
     Ncomb = len(selectedCombinationsSortedByVtxCL)
-    if fixedLen>0:
-        Ncomb = fixedLen
+    if maxCombinations>0:
+        Ncomb = maxCombinations
     selectedCombinationsSortedByVtxCL = selectedCombinationsSortedByVtxCL[:Ncomb]
     
     #require that the gen-matched signal combination is within selected combinations
@@ -319,16 +336,13 @@ def writeEvent(tree,index,writer,isSignal=False,isTestData=False,fCombination=-1
 
     data = buildArrays(tree,Ncomb,selectedCombinationsSortedByVtxCL,isSignal=isSignal)
     
+    if data==None:
+        return False
     
-    for k in data.keys():
-        if not numpy.all(numpy.isfinite(data[k])):
-            print "Warning - found non-finite data"
-            return False
     
     for k in data.keys():
         numpy.nan_to_num(data[k], copy=False)
         writer[k].append(data[k])
-    
     
     return True
     
@@ -425,7 +439,17 @@ class Chain(object):
         #print "reading ",k,"entry=%i, offset=%i"%(self._currentEntry,bufferOffset)
         return self._buffer[k]["data"][bufferOffset]
         
-def convert(outputFolder,signalChain,backgroundChain,repeatSignal=1,nBatch=1,batch=0,testFractionSignal=0.2,testFractionBackground=0.5,fixedLen=-1):
+def convert(
+    outputFolder,
+    signalChain,
+    backgroundChain,
+    repeatSignal=1,
+    nBatch=1,
+    batch=0,
+    testFractionSignal=0.2,
+    testFractionBackground=0.5,
+    maxCombinations=-1
+):
 
      
     writerTrain = {
@@ -508,11 +532,11 @@ def convert(outputFolder,signalChain,backgroundChain,repeatSignal=1,nBatch=1,bat
             hSignal = (hSignal+hSignal/1000)%1000
             signalChain.GetEntry(signalEvent)
             if (hSignal>testFractionSignal*1000):
-                if (writeEvent(signalChain,nSignalWrittenTrain+nBackgroundWrittenTrain,writerTrain,isSignal=True,fixedLen=fixedLen)):
+                if (writeEvent(signalChain,nSignalWrittenTrain+nBackgroundWrittenTrain,writerTrain,isSignal=True,maxCombinations=maxCombinations)):
                     nSignalWrittenTrain+=1
                     uniqueSignalTrainEntries.add(signalEvent)
             else:
-                if (writeEvent(signalChain,nSignalWrittenTest+nBackgroundWrittenTest,writerTest,isSignal=True,fixedLen=fixedLen)):
+                if (writeEvent(signalChain,nSignalWrittenTest+nBackgroundWrittenTest,writerTest,isSignal=True,maxCombinations=maxCombinations)):
                     nSignalWrittenTest+=1
                     uniqueSignalTestEntries.add(signalEvent)
         else:
@@ -524,10 +548,10 @@ def convert(outputFolder,signalChain,backgroundChain,repeatSignal=1,nBatch=1,bat
             backgroundChain.GetEntry(backgroundEvent)
             
             if (hBackground>testFractionBackground*1000):
-                if (writeEvent(backgroundChain,nSignalWrittenTrain+nBackgroundWrittenTrain,writerTrain,isSignal=False,fixedLen=fixedLen)):
+                if (writeEvent(backgroundChain,nSignalWrittenTrain+nBackgroundWrittenTrain,writerTrain,isSignal=False,maxCombinations=maxCombinations)):
                     nBackgroundWrittenTrain+=1 
             else:
-                if (writeEvent(backgroundChain,nSignalWrittenTest+nBackgroundWrittenTest,writerTest,isSignal=False,fixedLen=fixedLen)):
+                if (writeEvent(backgroundChain,nSignalWrittenTest+nBackgroundWrittenTest,writerTest,isSignal=False,maxCombinations=maxCombinations)):
                     nBackgroundWrittenTest+=1 
                     
     
@@ -621,63 +645,64 @@ import argparse
 parser = argparse.ArgumentParser(description='Process some integers.')
 parser.add_argument('--mc', type=str, action='append', default=[], dest='mc', help="MC (=signal) folder")
 parser.add_argument('--data', type=str, action='append', default=[], dest='data', help="Data (=background) folder")
-parser.add_argument('-n', type=int, dest='n', help="Number of batches")
-parser.add_argument('-b', type=int, dest='b', help="Current batch")
+parser.add_argument('--repeatSignal', type=int, default=30, dest='repeatSignal', help="Repeats signal n times")
+parser.add_argument('-n', type=int, dest='numberOfBatches', help="Number of batches")
+parser.add_argument('-b', type=int, dest='currentBatchNumber', help="Current batch")
 parser.add_argument('-o','--output', type=str, dest='output', help="Ouput folder")
 
 args = parser.parse_args()
 
-
-signalFiles = [
-    #'/vols/cms/vc1116/BParking/ntuPROD/BPH_MC_Ntuple/ntu_PR38_LTT_BPH_MC_BuToK_ToMuMu_1.root',
-    #'/vols/cms/vc1116/BParking/ntuPROD/BPH_MC_Ntuple/ntu_PR38_LTT_BPH_MC_BuToK_ToMuMu_2.root',
-    #'/vols/cms/vc1116/BParking/ntuPROD/BPH_MC_Ntuple/ntu_PR38_LTT_BPH_MC_BuToK_ToMuMu.root'
-]
-
-
-
-
+signalFiles = []
+#/vols/cms/vc1116/BParking/ntuPROD/BPH_MC_Ntuple/ntu_PR38_LTT_BPH_MC_BuToK_ToMuMu_*.root
+for inputPattern in args.mc:
+    files = map(
+        lambda f: [os.path.abspath(f),os.path.getsize(f)],
+        glob.glob(inputPattern)
+    )
+    print "Found "+str(len(files))+" MC (=signal) from "+inputPattern
+    signalFiles.extend(files)
+    
 backgroundFiles = []
-
-for folder in [
-    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR38_ltt_BToKmumu/A1",
-    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR38_ltt_BToKmumu/A2",
-    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR38_ltt_BToKmumu/A3",
-    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR38_ltt_BToKmumu/A4",
-    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR38_ltt_BToKmumu/A5",
-    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR38_ltt_BToKmumu/A6",
-    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR38_ltt_BToKmumu/B4",
-    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR38_ltt_BToKmumu/B5",
-    #"/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR38_ltt_BToKmumu/D1",
-]:
-    for f in os.listdir(folder):
-        if re.match("\w+.root",f):
-            fullFilePath = os.path.join(folder,f)
-            backgroundFiles.append([fullFilePath,os.path.getsize(fullFilePath)])
-            
+#/vols/cms/vc1116/BParking/ntuPROD/data_BToKmumuNtuple/PR38_ltt_BToKmumu/*/*.root
+for inputPattern in args.data:
+    files = map(
+        lambda f: [os.path.abspath(f),os.path.getsize(f)],
+        glob.glob(inputPattern)
+    )
+    print "Found "+str(len(files))+" data (=background) from "+inputPattern
+    backgroundFiles.extend(files)
+    
            
 random.seed(1234)
 random.shuffle(signalFiles)
 
 backgroundFiles = sorted(backgroundFiles,key=lambda x: x[1])
 backgroundFilesBatched = []
-for b in range(args.n):
-    for i in range(int(1.*len(backgroundFiles)/args.n/2)):
-        backgroundFilesBatched.append(backgroundFiles[(2*i*args.n+b)%len(backgroundFiles)][0])
-        backgroundFilesBatched.append(backgroundFiles[((2*i+1)*args.n-b)%len(backgroundFiles)][0])
+for b in range(args.numberOfBatches):
+    for i in range(int(1.*len(backgroundFiles)/args.numberOfBatches/2)):
+        backgroundFilesBatched.append(backgroundFiles[(2*i*args.numberOfBatches+b)%len(backgroundFiles)][0])
+        backgroundFilesBatched.append(backgroundFiles[((2*i+1)*args.numberOfBatches-b)%len(backgroundFiles)][0])
 
 
             
-batchStartBackground = int(round(1.*len(backgroundFilesBatched)/args.n*args.b))
-batchEndBackground = int(round(1.*len(backgroundFilesBatched)/args.n*(args.b+1)))
+batchStartBackground = int(round(1.*len(backgroundFilesBatched)/args.numberOfBatches*args.currentBatchNumber))
+batchEndBackground = int(round(1.*len(backgroundFilesBatched)/args.numberOfBatches*(args.currentBatchNumber+1)))
 
 print "bkg slice: ",batchStartBackground,"-",batchEndBackground,"/",len(backgroundFilesBatched)
 #sys.exit(1)
-signalChain = Chain(signalFiles)
+signalChain = Chain(map(lambda f: f[0],signalFiles))
 backgroundChain = Chain(backgroundFilesBatched[batchStartBackground:batchEndBackground])
 #backgroundChain = Chain([backgroundFiles[0][0]])#,backgroundFiles[1][0]])
 
-convert(args.output,signalChain,backgroundChain,repeatSignal=25,nBatch=args.n,batch=args.b,fixedLen=10)
+convert(
+    args.output,
+    signalChain,
+    backgroundChain,
+    repeatSignal=args.repeatSignal,
+    nBatch=args.numberOfBatches,
+    batch=args.currentBatchNumber,
+    maxCombinations=10
+)
 
 
 

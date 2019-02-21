@@ -13,6 +13,7 @@ jobs:
     - stage: Unpack
       script: 
         - travis_wait 30 Tests/testSetupCpuEnv.sh
+        - Tests/testUnpacking.sh
 notifications:
   email:
     recipients:
