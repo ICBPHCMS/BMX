@@ -110,6 +110,7 @@ def get_trained_model(
                   batch_size=10000, epochs=15,
                   validation_split=0.05,
                   sample_weight=sample_weights)
+    '''
     # larger batchsize similar to learning rate decay
     api_model.fit(X_train,
                   [Y_train, bmass_train[:, 0:n_vertex]],
@@ -117,5 +118,5 @@ def get_trained_model(
                   epochs=10,
                   validation_split=0.05,
                   sample_weight=sample_weights)
-
+    '''
     return api_model
