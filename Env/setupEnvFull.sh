@@ -84,7 +84,7 @@ function run_setup()
     echo "Generate setup script"
     echo "export PATH="$INSTALL_ABSDIR"/miniconda/bin:\$PATH" > $SCRIPT_DIR/env_cpu.sh
     #echo "export LD_PRELOAD="$INSTALL_ABSDIR"/miniconda/lib/libmkl_core.so:"$INSTALL_ABSDIR"/miniconda/lib/libmkl_sequential.so:\$LD_PRELOAD" >> $SCRIPT_DIR/env_cpu.sh
-    echo "conda activate tf_cpu" >> $SCRIPT_DIR/env_cpu.sh
+    echo "source activate tf_cpu" >> $SCRIPT_DIR/env_cpu.sh
 
     source deactivate &>> $LOGFILE || return 1
     
@@ -118,7 +118,7 @@ function run_setup()
     echo "Generate setup script"
     echo "export PATH="$INSTALL_ABSDIR"/miniconda/bin:\$PATH" > $SCRIPT_DIR/env_gpu.sh
     #echo "export LD_PRELOAD="$INSTALL_ABSDIR"/miniconda/lib/libmkl_core.so:"$INSTALL_ABSDIR"/miniconda/lib/libmkl_sequential.so:\$LD_PRELOAD" >> $SCRIPT_DIR/env_gpu.sh
-    echo "conda activate tf_gpu" >> $SCRIPT_DIR/env_gpu.sh
+    echo "source activate tf_gpu" >> $SCRIPT_DIR/env_gpu.sh
 
     echo "export TF_CPP_MIN_LOG_LEVEL=2" >> $SCRIPT_DIR/env_gpu.sh
     echo "export OMP_NUM_THREADS=16 #reduce further if out-of-memory" >> $SCRIPT_DIR/env_gpu.sh
