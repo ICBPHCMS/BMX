@@ -4,6 +4,7 @@ function execute()
 {
     source Env/env_cpu.sh || return 1
     export OMP_NUM_THREADS=1
+    export DISPLAY=:0.0
     
     python Utils/unpackForTraining.py \
     --mc="Tests/samples/*sig*.root" \
