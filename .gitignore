@@ -6,6 +6,5 @@
 *.png
 *.html
 *.log
-*.*
 */log/*
 Env/env/*
