@@ -11,6 +11,9 @@ import time
 import glob
 import uproot
 
+from Chain import Chain
+from selections import *
+
 def getValue(tree,field,n):
     #print "get",field
     if not hasattr(tree,field):
@@ -51,9 +54,12 @@ def closestJet(tree,eta,phi):
     
 def closestPUVertex(tree,dz):
     minDZ = 100.
+    if tree.nOtherPV<=1:
+        return minDZ
     #http://cmslxr.fnal.gov/source/DataFormats/PatCandidates/src/PackedCandidate.cc#0035
     #dZ = vertex_Z - candidate_Z
-    for i in range(tree.nOtherPV):
+    sortedindex = numpy.argsort(numpy.fabs(tree.OtherPV_z-tree.PV_z))
+    for i in sortedindex[1:]:
         minDZ = min(minDZ,math.fabs(tree.OtherPV_z[i]-(tree.PV_z-dz)))
     return minDZ
     
@@ -118,7 +124,12 @@ featuresPerCombination = [
     #eta
     ["lepton1_abseta",lambda i,tree: math.fabs(getValue(tree,"BToKstll_lep1_eta",i))],
     ["lepton2_abseta",lambda i,tree: math.fabs(getValue(tree,"BToKstll_lep2_eta",i))],
-    ["k_eta",lambda i,tree: math.fabs(getValue(tree,"BToKstll_kaon_eta",i))],
+    ["k_abseta",lambda i,tree: math.fabs(getValue(tree,"BToKstll_kaon_eta",i))],
+
+    #dz
+    ["lepton1_dz",lambda i,tree: math.fabs(getValue(tree,"BToKstll_lep1_dz",i))],
+    ["lepton2_dz",lambda i,tree: math.fabs(getValue(tree,"BToKstll_lep2_dz",i))],
+    ["k_dz",lambda i,tree: math.fabs(getValue(tree,"BToKstll_kaon_dz",i))],
 
     #isolation if lepton (-1 for charged candidate)
     ["lepton1_iso",lambda i,tree: muonIsolation(tree,getValue(tree,"BToKstll_lep1_index",i))],
@@ -139,7 +150,7 @@ featuresPerCombination = [
     ],
     
     #delta R
-    ["dilepton_deltaR",lambda i,tree: math.sqrt(
+    ["lepton1lepton2_deltaR",lambda i,tree: math.sqrt(
         (getValue(tree,"BToKstll_lep1_eta",i)-getValue(tree,"BToKstll_lep2_eta",i))**2+\
         deltaPhi(getValue(tree,"BToKstll_lep1_phi",i),getValue(tree,"BToKstll_lep2_phi",i))**2
     )],
@@ -186,13 +197,10 @@ featuresPerCombination = [
     )],
     
     #dxy wrt vertex
-    ["k_deltaXY_wrtVtx",lambda i,tree: getValue(tree,"BToKstll_kaon_dxy_wrtllVtx",i)],
-    
-    #dz to PV
-    ["k_deltaZ_PV",lambda i,tree: getValue(tree,"BToKstll_kaon_dz",i)],
+    ["k_dxy_wrtVtx",lambda i,tree: getValue(tree,"BToKstll_kaon_dxy_wrtllVtx",i)],
     
     #dz to next PU vertex
-    ["k_deltaZ_PU",lambda i,tree: closestPUVertex(tree,getValue(tree,"BToKstll_kaon_dz",i))],
+    ["k_mindz_wrtPU",lambda i,tree: closestPUVertex(tree,getValue(tree,"BToKstll_kaon_dz",i))],
     
     #B features
     ["B_pt",lambda i,tree: getValue(tree,"BToKstll_B_pt",i)],
@@ -234,8 +242,11 @@ def myHash(value):
     h = (h >> 16) ^ h
     return h
     
-    
 def combinationSelection(tree,icombination,isSignal):
+    #an additional tag muon
+    if (tree.Muon_tag_index[icombination]<0):
+        return False
+
     if (tree.BToKstll_lep1_pt[icombination]<1. or math.fabs(tree.BToKstll_lep1_eta[icombination])>=2.4):
         return False
     if (tree.BToKstll_lep2_pt[icombination]<1. or math.fabs(tree.BToKstll_lep2_eta[icombination])>=2.4):
@@ -250,28 +261,46 @@ def combinationSelection(tree,icombination,isSignal):
     #note: these cuts should also be applied already in the ntuples
     if (tree.BToKstll_B_CL_vtx[icombination]<0.001):
         return False
-    if (tree.BToKstll_B_mass[icombination]<4. or tree.BToKstll_B_mass[icombination]>8.):
+        
+    if (tree.BToKstll_B_mass[icombination]<4.5 or tree.BToKstll_B_mass[icombination]>7.):
         return False
+        
     return True
     
 def baseSelection(tree,isSignal):
     #at least one b hypothesis
-    if (tree.nBToKstll==0):
+    if (tree.nBToKstll<=0):
         return False
-    
-    #an additional tag muon
-    if (tree.Muon_sel_index<0):
-        return False
-        
-    if (tree.BToKstll_sel_index<0):
-        return False
+
+    #one triplet is selected to be best by CL
+    #if (tree.BToKstll_sel_index<0):
+    #    return False
     
     #signal defined to be fully matched to gen (no product missing after reconstruction)
     if (isSignal and tree.BToKstll_gen_index<0):
         return False
         
-    if not combinationSelection(tree,tree.BToKstll_sel_index,isSignal):
+    #all objects are matched
+    if (isSignal and (
+        tree.BToKstll_gendR_KFromB<0 or \
+        tree.BToKstll_gendR_lep1FromB<0 or \
+        tree.BToKstll_gendR_lep2FromB<0)
+    ):
         return False
+    
+    #require proper dR match to gen objects
+    if (isSignal and (
+        tree.BToKstll_gendR_KFromB+\
+        tree.BToKstll_gendR_lep1FromB+\
+        tree.BToKstll_gendR_lep2FromB)>0.02 #can use up to 0.025
+    ):
+        return False
+        
+    #if not combinationSelection(tree,tree.BToKstll_sel_index,isSignal):
+    #    return False
+        
+    #if (isSignal and (not combinationSelection(tree,tree.BToKstll_gen_index,isSignal))):
+    #    return False
         
     return True
     
@@ -289,19 +318,19 @@ def refSelectionMu(tree,icombination):
         return False
         
     return True
+
     
-    
-def buildArrays(tree,Ncomb,selectedCombinationsSortedByVtxCL,isSignal=False):
+def buildArrays(tree,Ncomb,selectedCombinationsSortedByVtxCL,isSignal=False,maxGenIndex=-1):
     gobalFeatureArray = numpy.zeros(len(globalFeatures),dtype=numpy.float32)
     combinationFeatureArray = numpy.zeros((Ncomb,len(featuresPerCombination)),dtype=numpy.float32)
     #one hot encoding of correct triplet (last one if no triplet is correct or background)
-    genIndexArray = numpy.zeros((Ncomb+1),dtype=numpy.float32)
+    genIndexArray = numpy.zeros((Ncomb+1) if maxGenIndex<0 else (maxGenIndex+1),dtype=numpy.float32)
     bmassArray = numpy.zeros((Ncomb),dtype=numpy.float32)
     llmassArray = numpy.zeros((Ncomb),dtype=numpy.float32)
     refSelArray = numpy.zeros((Ncomb),dtype=numpy.float32)
     
     #set to last one by default == no triplet is correct
-    genCombinationIndex = Ncomb
+    genCombinationIndex = genIndexArray.shape[0]-1
     if isSignal:
         genIndex = int(tree.BToKstll_gen_index)
         if genIndex>=0:
@@ -310,9 +339,16 @@ def buildArrays(tree,Ncomb,selectedCombinationsSortedByVtxCL,isSignal=False):
                 if combinationIndex==genIndex:
                     genCombinationIndex = iselectedCombination
                     break
+                    
+            #gen vertex index too high
+            if genCombinationIndex>(genIndexArray.shape[0]-1):
+                return None
            
-    if genCombinationIndex>=Ncomb:
-        genCombinationIndex = Ncomb
+        #reject signal event if triplet not selected
+        if genCombinationIndex == (genIndexArray.shape[0]-1):
+            return None
+            
+            
     genIndexArray[genCombinationIndex] = 1.
     
     
@@ -368,7 +404,7 @@ def buildArrays(tree,Ncomb,selectedCombinationsSortedByVtxCL,isSignal=False):
     }
     
     
-def writeEvent(tree,index,writer,isSignal=False,isTestData=False,fCombination=-1,maxCombinations=-1):
+def writeEvent(tree,index,writer,isSignal=False,isTestData=False,fCombination=-1,maxCombinations=-1,maxGenIndex=-1):
     
     
     if (not baseSelection(tree,isSignal)):
@@ -381,7 +417,7 @@ def writeEvent(tree,index,writer,isSignal=False,isTestData=False,fCombination=-1
         if not combinationSelection(tree,icombination,isSignal):
             continue
         massVtxCLIndex.append([
-            -getValue(tree,"BToKstll_B_CL_vtx",icombination),
+            getValue(tree,"BToKstll_B_CL_vtx",icombination),
             getValue(tree,"BToKstll_B_mass",icombination),
             icombination
         ])
@@ -390,7 +426,8 @@ def writeEvent(tree,index,writer,isSignal=False,isTestData=False,fCombination=-1
     if len(selectedCombinations)==0:
         return False
         
-    massVtxCLIndexSortedByVtxCL = sorted(massVtxCLIndex,key=lambda elem: elem[0])    
+    massVtxCLIndexSortedByVtxCL = sorted(massVtxCLIndex,key=lambda elem: -elem[0])    
+    #print massVtxCLIndexSortedByVtxCL
     selectedCombinationsSortedByVtxCL = map(lambda x:x[2],massVtxCLIndexSortedByVtxCL)
 
     record = {}
@@ -400,6 +437,7 @@ def writeEvent(tree,index,writer,isSignal=False,isTestData=False,fCombination=-1
         Ncomb = maxCombinations
     selectedCombinationsSortedByVtxCL = selectedCombinationsSortedByVtxCL[:Ncomb]
     
+    '''
     #require that the gen-matched signal combination is within selected combinations
     if isSignal:
         genCombinationIndex = -1
@@ -410,113 +448,26 @@ def writeEvent(tree,index,writer,isSignal=False,isTestData=False,fCombination=-1
           
         if genCombinationIndex<0:   
             return False
-
+    '''
     
 
-    data = buildArrays(tree,Ncomb,selectedCombinationsSortedByVtxCL,isSignal=isSignal)
+    data = buildArrays(tree,Ncomb,selectedCombinationsSortedByVtxCL,isSignal=isSignal,maxGenIndex=maxGenIndex)
     
     if data==None:
         return False
     
+    for k in data.keys():
+        if not numpy.isfinite(data[k]).all():
+            return False
     
     for k in data.keys():
-        numpy.nan_to_num(data[k], copy=False)
         writer[k].append(data[k])
     
     return True
     
     
 
-class Chain(object):
-    def __init__(self,fileList):
-        self._fileList = fileList
-        self._nEvents = []
-        
-        self._currentFile = None
-        self._currentTree = None
-        self._currentFileName = ""
-        self._currentEntry = 0
-        self._currentOffset = 0
-        self._currentSize = 0
-        self._prefetchSize = 10000
-        self._buffer = {}
-        
-        self._fileEventPairs = []
-        for i,f in enumerate(self._fileList):
-            try:
-                print i,'/',len(self._fileList),'...',f
-                rootFile = self.OpenFile(f)
-                tree = rootFile["Events"]
-                nevents = len(tree)
-                self._fileEventPairs.append([f,nevents])
-            except Exception,e:
-                print "Error - cannot open file: ",f
-                print e
-                
-        self._sumEvents = sum(map(lambda x:x[1],self._fileEventPairs))
-        
-    def OpenFile(self, path):
-        return uproot.open(path,localsource=lambda f: 
-            uproot.FileSource(f,chunkbytes=8*1024,limitbytes=1024**2)
-        )
-            
-    def GetEntries(self):
-        return self._sumEvents
-        
-    def GetCurrentFile(self):
-        return self._currentFileName
-            
-    def GetEntry(self,i):
-        if i<0:
-            print "Error - event entry negative: ",i
-            i=0
-        if self._currentTree!=None and (i-self._currentOffset)<len(self._currentTree) and (i-self._currentOffset)>=0:
-            self._currentEntry = i-self._currentOffset
-        else:
-            del self._currentTree
-            self._currentTree = None
-            del self._buffer
-            self._buffer = {}
-            s = 0
-            i = i%self._sumEvents #loop
-            for e in range(len(self._fileEventPairs)):
-                if s<=i and (s+self._fileEventPairs[e][1])>i:
-                    print "opening",self._fileEventPairs[e][0]
-                    self._currentFile = self.OpenFile(self._fileEventPairs[e][0])
-                    self._currentFileName = self._fileEventPairs[e][0]
-                    self._currentTree = self._currentFile["Events"]
-                    self._currentSize = len(self._currentTree)
-                    self._currentOffset = s
-                    self._currentEntry = i-self._currentOffset
-                    break
-                s+=self._fileEventPairs[e][1]
-                
-    def prefetchBranch(self,k):
-        maxPrefetch = min(self._currentEntry+self._prefetchSize,self._currentSize)
-        self._buffer[k] = {
-            "data": self._currentTree[k].array(entrystart=self._currentEntry, entrystop=maxPrefetch),
-            "min":self._currentEntry,
-            "max":maxPrefetch
-        }
-        '''
-        print "loading branch ",k,
-        print " with entries ",len(self._buffer[k]["data"]),
-        print " (tree len=%i, fetched=[%i, %i])"%(self._currentSize,self._currentEntry,maxPrefetch)
-        '''
-                    
-    def __getattr__(self,k):
-        if self._currentEntry>self._currentSize:
-            print "Error - at end of file: ",self._currentEntry,self._currentSize
-            return
-            
-        if not self._buffer.has_key(k):
-            self.prefetchBranch(k)
-        elif self._currentEntry<self._buffer[k]["min"] or self._currentEntry>=self._buffer[k]["max"]:
-            self.prefetchBranch(k)
-        
-        bufferOffset = self._currentEntry-self._buffer[k]["min"]
-        #print "reading ",k,"entry=%i, offset=%i"%(self._currentEntry,bufferOffset)
-        return self._buffer[k]["data"][bufferOffset]
+
         
 def convert(
     outputFolder,
@@ -527,7 +478,8 @@ def convert(
     batch=0,
     testFractionSignal=0.2,
     testFractionBackground=0.5,
-    maxCombinations=-1
+    maxCombinations=-1,
+    maxGenIndex=-1
 ):
 
      
@@ -613,11 +565,11 @@ def convert(
             hSignal = (hSignal+hSignal/1000)%1000
             signalChain.GetEntry(signalEvent)
             if (hSignal>testFractionSignal*1000):
-                if (writeEvent(signalChain,nSignalWrittenTrain+nBackgroundWrittenTrain,writerTrain,isSignal=True,maxCombinations=maxCombinations)):
+                if (writeEvent(signalChain,nSignalWrittenTrain+nBackgroundWrittenTrain,writerTrain,isSignal=True,maxCombinations=maxCombinations,maxGenIndex=maxGenIndex)):
                     nSignalWrittenTrain+=1
                     uniqueSignalTrainEntries.add(signalEvent)
             else:
-                if (writeEvent(signalChain,nSignalWrittenTest+nBackgroundWrittenTest,writerTest,isSignal=True,maxCombinations=maxCombinations)):
+                if (writeEvent(signalChain,nSignalWrittenTest+nBackgroundWrittenTest,writerTest,isSignal=True,maxCombinations=maxCombinations,maxGenIndex=maxGenIndex)):
                     nSignalWrittenTest+=1
                     uniqueSignalTestEntries.add(signalEvent)
         else:
@@ -629,10 +581,10 @@ def convert(
             backgroundChain.GetEntry(backgroundEvent)
             
             if (hBackground>testFractionBackground*1000):
-                if (writeEvent(backgroundChain,nSignalWrittenTrain+nBackgroundWrittenTrain,writerTrain,isSignal=False,maxCombinations=maxCombinations)):
+                if (writeEvent(backgroundChain,nSignalWrittenTrain+nBackgroundWrittenTrain,writerTrain,isSignal=False,maxCombinations=maxCombinations,maxGenIndex=maxGenIndex)):
                     nBackgroundWrittenTrain+=1 
             else:
-                if (writeEvent(backgroundChain,nSignalWrittenTest+nBackgroundWrittenTest,writerTest,isSignal=False,maxCombinations=maxCombinations)):
+                if (writeEvent(backgroundChain,nSignalWrittenTest+nBackgroundWrittenTest,writerTest,isSignal=False,maxCombinations=maxCombinations,maxGenIndex=maxGenIndex)):
                     nBackgroundWrittenTest+=1 
                     
     
@@ -726,7 +678,7 @@ import argparse
 parser = argparse.ArgumentParser(description='Process some integers.')
 parser.add_argument('--mc', type=str, action='append', default=[], dest='mc', help="MC (=signal) folder")
 parser.add_argument('--data', type=str, action='append', default=[], dest='data', help="Data (=background) folder")
-parser.add_argument('--repeatSignal', type=int, default=30, dest='repeatSignal', help="Repeats signal n times")
+parser.add_argument('--repeatSignal', type=int, default=20, dest='repeatSignal', help="Repeats signal n times")
 parser.add_argument('-n', type=int, dest='numberOfBatches', help="Number of batches")
 parser.add_argument('-b', type=int, dest='currentBatchNumber', help="Current batch")
 parser.add_argument('-o','--output', type=str, dest='output', help="Ouput folder")
@@ -782,7 +734,8 @@ convert(
     repeatSignal=args.repeatSignal,
     nBatch=args.numberOfBatches,
     batch=args.currentBatchNumber,
-    maxCombinations=10
+    maxCombinations=10,
+    maxGenIndex = 10,
 )
 
 

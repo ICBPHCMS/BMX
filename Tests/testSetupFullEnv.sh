@@ -9,6 +9,8 @@ function execute()
     
     source Env/env_gpu.sh || return 1
     source deactivate tf_gpu || return 1
+    
+    
 }
 
 execute

@@ -50,7 +50,7 @@ inputCombinationFeatures = [
     'k_deltaRJet', 
     'k_dxy_wrtVtx', 
     'k_dz', 
-    'k_eta', 
+    'k_abseta', 
     'k_mindz_wrtPU', 
     #'k_pt', 
     'k_ptrel', 
@@ -94,9 +94,20 @@ inputGlobalFeatures = [
     'leadingjet_pt'
 ]
 
+import argparse
 
-dataTrain = HDF5Reader.fromFolder('../../mumut2/',"train\w+.hdf5",maxFiles=-1,nVertices=2)()
-dataTest = HDF5Reader.fromFolder('../../mumut2/',"test\w+.hdf5",maxFiles=-1,nVertices=2)()
+parser = argparse.ArgumentParser(description='Process some integers.')
+parser.add_argument('-i','--input', type=str, dest='inputFolder', help="Input folder")
+parser.add_argument('-o','--output', type=str, dest='outputFolder', help="Ouput folder")
+parser.add_argument('-n','--maxFiles', type=int, default=-1, dest='maxFiles', help="Number of files")
+parser.add_argument('-b','--batchSize', type=int, default=10000, dest='batchSize', help="Batch size")
+parser.add_argument('-e','--epochs', type=int, default=100, dest='maxEpochs', help="Number of epochs")
+parser.add_argument('-l','--learningRate', type=float, default=0.0001, dest='learningRate', help="Initial learning rate")
+args = parser.parse_args()
+
+
+dataTrain = HDF5Reader.fromFolder(args.inputFolder,"train\w+.hdf5",maxFiles=args.maxFiles,nVertices=2)()
+dataTest = HDF5Reader.fromFolder(args.inputFolder,"test\w+.hdf5",maxFiles=args.maxFiles,nVertices=2)()
 
 
 combinationFeaturesTrain = HDF5Reader.merge_combination_features(
@@ -108,15 +119,6 @@ globalFeaturesTrain = HDF5Reader.merge_global_features(
     featureNames=inputGlobalFeatures
 )
 
-regressionTargetsTrain = np.stack(
-    [
-        dataTrain['bmass'],
-        dataTrain['llmass']
-    ],
-    axis = 1
-)
-regressionTargetsTrain = regressionTargetsTrain[:,:,0]
-
 combinationFeaturesTest = HDF5Reader.merge_combination_features(
     dataTest,
     featureNames=inputCombinationFeatures
@@ -127,14 +129,13 @@ globalFeaturesTest = HDF5Reader.merge_global_features(
     featureNames=inputGlobalFeatures
 )
 
-#globalFeatures = HDF5Reader.merge_global_features(columns)
 
 network = BMXNetwork(dropout_rate=0.1)
 classModel = network.getClassModel(combinationFeaturesTrain,globalFeaturesTrain)
 classModel.summary()
 
 classOpt = keras.optimizers.Adam(
-    lr=0.0001, 
+    lr=args.learningRate, 
     beta_1=0.9, 
     beta_2=0.999,
     epsilon=None, 
@@ -148,23 +149,6 @@ classModel.compile(
     metrics=['accuracy'],
 )
 
-fullModel = network.getFullModel(combinationFeaturesTrain,globalFeaturesTrain)
-#fullModel.summary()
-
-fullOpt = keras.optimizers.Adam(
-    lr=0.001, 
-    beta_1=0.9, 
-    beta_2=0.999,
-    epsilon=None, 
-    decay=0.0, 
-    amsgrad=False
-)
-
-fullModel.compile(
-    loss=['categorical_crossentropy','mse'],
-    optimizer=fullOpt,
-    metrics=['accuracy'],
-)
 
 trainLoss = []
 testLoss = []
@@ -173,9 +157,9 @@ trainAcc = []
 testAcc = []
 
 np.random.seed(12345)
-batchSizeTrain = 40000
+batchSizeTrain = args.batchSize
 nBatchesTrain = int(math.floor(1.*combinationFeaturesTrain.shape[0]/batchSizeTrain))
-batchSizeTest = 40000
+batchSizeTest = args.batchSize
 nBatchesTest = int(math.floor(1.*combinationFeaturesTest.shape[0]/batchSizeTest))
 
 nSignalTrain = np.sum(dataTrain['genIndex'][:,0:-1]) #sum over vertices
@@ -213,12 +197,16 @@ history = classModel.fit(
 print history.history
 '''
 
+try:  
+    os.mkdir(args.outputFolder)
+except OSError,e:  
+    print "Creation of the directory %s failed: %s" % (args.outputFolder,e)
 
-if os.path.exists('model_weights.hdf5'):
-    classModel.load_weights('model_weights.hdf5')
+modelFile = os.path.join(args.outputFolder,'model_weights.hdf5')
+if os.path.exists(modelFile):
+    classModel.load_weights(modelFile)
 else:
-
-    for epoch in range(150,250):
+    for epoch in range(args.maxEpochs):
         #randomize input order
         np.random.shuffle(batchIndicesTrain)
         lossTrainSum = 0.
@@ -290,7 +278,7 @@ else:
         testLoss.append(lossTestSum/nBatchesTest)
         testAcc.append(1.-accTestSum/nBatchesTest)
         
-        classModel.save_weights('model_weights_%i.hdf5'%epoch)
+        classModel.save_weights(os.path.join(args.outputFolder,'model_weights_%i.hdf5'%epoch))
         
     fig = plt.figure()
     plt.plot(np.arange(len(trainLoss)),trainLoss,label='train')
@@ -299,7 +287,7 @@ else:
     plt.ylabel("Loss")
     plt.yscale("log")
     plt.legend(loc='upper right')
-    plt.savefig('loss.pdf')
+    plt.savefig(os.path.join(args.outputFolder,'loss.pdf'))
 
     fig = plt.figure()
     plt.plot(np.arange(len(trainAcc)),trainAcc,label='train')
@@ -308,9 +296,9 @@ else:
     plt.ylabel("1-accuracy")
     plt.yscale("log")
     plt.legend(loc='upper right')
-    plt.savefig('accuracy.pdf')
+    plt.savefig(os.path.join(args.outputFolder,'accuracy.pdf'))
 
-    classModel.save_weights('model_weights.hdf5')
+    classModel.save_weights(os.path.join(args.outputFolder,'model_weights.hdf5'))
 
 predictionTrain = []
 predictionTest = []
@@ -335,15 +323,6 @@ bgEffTest2nd,sigEffTest2nd,thresTest2nd = sklearn.metrics.roc_curve(
     predictClassTest[:,1]
 )
 
-
-bgEffTestAll,sigEffTestAll,thresTestAll = sklearn.metrics.roc_curve(
-    np.sum(dataTest['genIndex'][:,:-1],axis=1)>0,
-    np.sum(predictClassTest[:,:-1],axis=1)
-)
-
-#signalEffTrainRef = np.sum(dataTrain['truth'][dataTrain['refSel'][:,0]>0])/np.sum(dataTrain['truth'])
-#print signalEffTrainRef
-
 bgEffTest1stRef = np.sum(dataTest['genIndex'][dataTest['refSel'][:,0]>0,:][:,-1])/np.sum(dataTest['genIndex'][:,-1])
 sigEffTest1stRef = np.sum(dataTest['genIndex'][dataTest['refSel'][:,0]>0,:][:,0])/np.sum(dataTest['genIndex'][:,0])
 print bgEffTest1stRef,sigEffTest1stRef
@@ -351,7 +330,6 @@ print bgEffTest1stRef,sigEffTest1stRef
 bgEffTest2ndRef = np.sum(dataTest['genIndex'][dataTest['refSel'][:,1]>0,:][:,-1])/np.sum(dataTest['genIndex'][:,-1])
 sigEffTest2ndRef = np.sum(dataTest['genIndex'][dataTest['refSel'][:,1]>0,:][:,1])/np.sum(dataTest['genIndex'][:,1])
 print bgEffTest2ndRef,sigEffTest2ndRef
-
 
 fig = plt.figure()
 plt.plot(sigEffTest1st,bgEffTest1st,label='1st vertex',color='#2e4fd1')
@@ -363,7 +341,7 @@ plt.xlabel("Signal efficiency")
 plt.ylabel("Background efficiency")
 plt.yscale("log")
 plt.legend(loc='upper left')
-plt.savefig('roc.pdf')
+plt.savefig(os.path.join(args.outputFolder,'roc.pdf'))
 
 isSignalTrain = np.sum(dataTrain['genIndex'][:,:-1],axis=1)>0
 
@@ -379,7 +357,7 @@ plt.xlabel("1 vertex efficiency")
 plt.ylabel("2 vertex efficiency")
 plt.yscale("log")
 plt.legend(loc='upper left')
-plt.savefig('roc_1vs2.pdf')
+plt.savefig(os.path.join(args.outputFolder,'roc_1vs2.pdf'))
 
 
 isDataTest = dataTest['genIndex'][:,-1]>0
@@ -445,7 +423,7 @@ histBmassDisc.Draw("SamePE")
 
 ROOT.gPad.RedrawAxis()
 
-cvB.Print("bmass.pdf")
+cvB.Print(os.path.join(args.outputFolder,"bmass.pdf"))
 
 
 
@@ -483,23 +461,9 @@ histllmassDisc.Draw("SamePE")
 
 ROOT.gPad.RedrawAxis()
 
-cvll.Print("llmass.pdf")
+cvll.Print(os.path.join(args.outputFolder,"llmass.pdf"))
 
-'''
-for batch in range(nBatchesTrain):
-    result = classModel.predict_on_batch(
-        [
-            combinationFeaturesTrain[batch*batchSizeTrain:(batch+1)*batchSizeTrain]
-        ],
-    )
 
-for batch in range(nBatchesTest):
-    result = classModel.predict_on_batch(
-        [
-            combinationFeaturesTest[batch*batchSizeTest:(batch+1)*batchSizeTest]
-        ],
-    )
-'''
 
 
 
