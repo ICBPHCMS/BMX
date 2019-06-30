@@ -132,13 +132,14 @@ featuresPerCombination = [
     ["k_dz",lambda i,tree: math.fabs(getValue(tree,"BToKstll_kaon_dz",i))],
 
     #isolation if lepton (-1 for charged candidate)
-    ["lepton1_iso",lambda i,tree: muonIsolation(tree,getValue(tree,"BToKstll_lep1_index",i))],
-    ["lepton2_iso",lambda i,tree: muonIsolation(tree,getValue(tree,"BToKstll_lep2_index",i))],
+    #["lepton1_iso",lambda i,tree: muonIsolation(tree,getValue(tree,"BToKstll_lep1_index",i))],
+    #["lepton2_iso",lambda i,tree: muonIsolation(tree,getValue(tree,"BToKstll_lep2_index",i))],
     
     #2nd lepton = muon?
-    ["lepton2_isPFLepton",lambda i,tree: 1. if getValue(tree,"BToKstll_lep2_isPFLep",i) else 0.],
+    #["lepton2_isPFLepton",lambda i,tree: 1. if getValue(tree,"BToKstll_lep2_isPFLep",i) else 0.],
     
     #closest jet
+    
     ["lepton1_deltaRJet",lambda i,tree: 
         closestJet(tree,getValue(tree,"BToKstll_lep1_eta",i),getValue(tree,"BToKstll_lep1_phi",i))
     ],
@@ -150,18 +151,20 @@ featuresPerCombination = [
     ],
     
     #delta R
-    ["lepton1lepton2_deltaR",lambda i,tree: math.sqrt(
-        (getValue(tree,"BToKstll_lep1_eta",i)-getValue(tree,"BToKstll_lep2_eta",i))**2+\
-        deltaPhi(getValue(tree,"BToKstll_lep1_phi",i),getValue(tree,"BToKstll_lep2_phi",i))**2
-    )],
-    ["klepton1_deltaR",lambda i,tree: math.sqrt(
-        (getValue(tree,"BToKstll_lep1_eta",i)-getValue(tree,"BToKstll_kaon_eta",i))**2+\
-        deltaPhi(getValue(tree,"BToKstll_lep1_phi",i),getValue(tree,"BToKstll_kaon_phi",i))**2
-    )],
-    ["klepton2_deltaR",lambda i,tree: math.sqrt(
-        (getValue(tree,"BToKstll_lep2_eta",i)-getValue(tree,"BToKstll_kaon_eta",i))**2+\
-        deltaPhi(getValue(tree,"BToKstll_lep2_phi",i),getValue(tree,"BToKstll_kaon_phi",i))**2
-    )],
+    
+    #["lepton1lepton2_deltaR",lambda i,tree: math.sqrt(
+    #    (getValue(tree,"BToKstll_lep1_eta",i)-getValue(tree,"BToKstll_lep2_eta",i))**2+\
+    #    deltaPhi(getValue(tree,"BToKstll_lep1_phi",i),getValue(tree,"BToKstll_lep2_phi",i))**2
+    #)],
+    #["klepton1_deltaR",lambda i,tree: math.sqrt(
+    #    (getValue(tree,"BToKstll_lep1_eta",i)-getValue(tree,"BToKstll_kaon_eta",i))**2+\
+    #    deltaPhi(getValue(tree,"BToKstll_lep1_phi",i),getValue(tree,"BToKstll_kaon_phi",i))**2
+    #)],
+    #["klepton2_deltaR",lambda i,tree: math.sqrt(
+    #    (getValue(tree,"BToKstll_lep2_eta",i)-getValue(tree,"BToKstll_kaon_eta",i))**2+\
+    #    deltaPhi(getValue(tree,"BToKstll_lep2_phi",i),getValue(tree,"BToKstll_kaon_phi",i))**2
+    #)],
+    
     
     #delta XY
     ["lepton1lepton2_deltaXY",lambda i,tree: math.fabs(
@@ -186,21 +189,22 @@ featuresPerCombination = [
     )],
     
     #delta VZ wrt PV?
-    ["lepton1lepton2_deltaVZ",lambda i,tree: math.fabs(
-        getValue(tree,"BToKstll_lep1_vz",i)-getValue(tree,"BToKstll_lep2_vz",i)
-    )],
-    ["klepton1_deltaVZ",lambda i,tree: math.fabs(
-        getValue(tree,"BToKstll_lep1_vz",i)-getValue(tree,"BToKstll_kaon_vz",i)
-    )],
-    ["klepton2_deltaVZ",lambda i,tree: math.fabs(
-        getValue(tree,"BToKstll_lep2_vz",i)-getValue(tree,"BToKstll_kaon_vz",i)
-    )],
+    
+    #["lepton1lepton2_deltaVZ",lambda i,tree: math.fabs(
+    #    getValue(tree,"BToKstll_lep1_vz",i)-getValue(tree,"BToKstll_lep2_vz",i)
+    #)],
+    #["klepton1_deltaVZ",lambda i,tree: math.fabs(
+    #    getValue(tree,"BToKstll_lep1_vz",i)-getValue(tree,"BToKstll_kaon_vz",i)
+    #)],
+    #["klepton2_deltaVZ",lambda i,tree: math.fabs(
+    #    getValue(tree,"BToKstll_lep2_vz",i)-getValue(tree,"BToKstll_kaon_vz",i)
+    #)],
     
     #dxy wrt vertex
-    ["k_dxy_wrtVtx",lambda i,tree: getValue(tree,"BToKstll_kaon_dxy_wrtllVtx",i)],
+    #["k_dxy_wrtVtx",lambda i,tree: getValue(tree,"BToKstll_kaon_dxy_wrtllVtx",i)],
     
     #dz to next PU vertex
-    ["k_mindz_wrtPU",lambda i,tree: closestPUVertex(tree,getValue(tree,"BToKstll_kaon_dz",i))],
+    #["k_mindz_wrtPU",lambda i,tree: closestPUVertex(tree,getValue(tree,"BToKstll_kaon_dz",i))],
     
     #B features
     ["B_pt",lambda i,tree: getValue(tree,"BToKstll_B_pt",i)],
@@ -217,8 +221,8 @@ featuresPerCombination = [
     ["dilepton_abseta",lambda i,tree: math.fabs(getValue(tree,"BToKstll_ll_eta",i))],
     ["dilepton_Lxy",lambda i,tree: getValue(tree,"BToKstll_ll_Lxy",i)],
     ["dilepton_ctxy",lambda i,tree: getValue(tree,"BToKstll_ll_ctxy",i)],
-    ["dilepton_CL_vtx",lambda i,tree: getValue(tree,"BToKstll_ll_CL_vtx",i)],
-    ["dilepton_Chi2_vtx",lambda i,tree: getValue(tree,"BToKstll_ll_Chi2_vtx",i)],
+    ["dilepton_vtx_CL",lambda i,tree: getValue(tree,"BToKstll_ll_CL_vtx",i)],
+    ["dilepton_vtx_Chi2",lambda i,tree: getValue(tree,"BToKstll_ll_Chi2_vtx",i)],
 ]
 
 '''
@@ -262,7 +266,10 @@ def combinationSelection(tree,icombination,isSignal):
     if (tree.BToKstll_B_CL_vtx[icombination]<0.001):
         return False
         
-    if (tree.BToKstll_B_mass[icombination]<4.5 or tree.BToKstll_B_mass[icombination]>7.):
+    if (tree.BToKstll_B_mass[icombination]<4. or tree.BToKstll_B_mass[icombination]>8.):
+        return False
+        
+    if getValue(tree,"BToKstll_B_cosAlpha",icombination)<=0.9:
         return False
         
     return True
@@ -391,7 +398,7 @@ def buildArrays(tree,Ncomb,selectedCombinationsSortedByVtxCL,isSignal=False,maxG
         llmassArray[iselectedCombination] = llmassValue
         refSelArray[iselectedCombination] = 1. if refSelectionMu(tree,combinationIndex) else 0.
  
-    truthArray = numpy.array(1. if isSignal else 0.,dtype=numpy.float32)
+    isMCArray = numpy.array(1. if isSignal else 0.,dtype=numpy.float32)
     
     return {
         "combinationFeatures":combinationFeatureArray,
@@ -400,7 +407,7 @@ def buildArrays(tree,Ncomb,selectedCombinationsSortedByVtxCL,isSignal=False,maxG
         "refSel":refSelArray,
         "bmass":bmassArray,
         "llmass":llmassArray,
-        "truth":truthArray
+        "isMC":isMCArray
     }
     
     
@@ -490,7 +497,7 @@ def convert(
         "refSel":[],
         "bmass":[],
         "llmass":[],
-        "truth":[]
+        "isMC":[]
     }
     
     writerTest = {
@@ -500,7 +507,7 @@ def convert(
         "refSel":[],
         "bmass":[],
         "llmass":[],
-        "truth":[]
+        "isMC":[]
     }
     
     
@@ -669,9 +676,21 @@ def convert(
                 print "test hdf5 writing ",k,writerTest[k].shape
                 h5Test.create_dataset(k, data=writerTest[k])
     
-    print "Total signal written: %i/%i/%i total/train/test, test frac: %.3f"%(signalEntry,nSignalWrittenTrain,nSignalWrittenTest,100.*nSignalWrittenTest/(nSignalWrittenTest+nSignalWrittenTrain))
-    print "Total background written: %i/%i/%i total/train/test, test frac: %.3f"%(backgroundEntry,nBackgroundWrittenTrain,nBackgroundWrittenTest,100.*nBackgroundWrittenTest/(nBackgroundWrittenTest+nBackgroundWrittenTrain))
-    print "Overlap signal train/test: %i"%(len(uniqueSignalTrainEntries.intersection(uniqueSignalTestEntries)))
+    print "Total signal written: %i/%i/%i total/train/test, test frac: %.3f"%(
+        signalEntry,
+        nSignalWrittenTrain,
+        nSignalWrittenTest,
+        100.*nSignalWrittenTest/(nSignalWrittenTest+nSignalWrittenTrain) if (nSignalWrittenTest+nSignalWrittenTrain)> 0 else -1
+    )
+    print "Total background written: %i/%i/%i total/train/test, test frac: %.3f"%(
+        backgroundEntry,
+        nBackgroundWrittenTrain,
+        nBackgroundWrittenTest,
+        100.*nBackgroundWrittenTest/(nBackgroundWrittenTest+nBackgroundWrittenTrain) if (nBackgroundWrittenTest+nBackgroundWrittenTrain)>0 else -1
+    )
+    print "Overlap signal train/test: %i"%(
+        len(uniqueSignalTrainEntries.intersection(uniqueSignalTestEntries))
+    )
 
 import argparse
 
@@ -734,8 +753,8 @@ convert(
     repeatSignal=args.repeatSignal,
     nBatch=args.numberOfBatches,
     batch=args.currentBatchNumber,
-    maxCombinations=10,
-    maxGenIndex = 10,
+    maxCombinations=20,
+    maxGenIndex=20,
 )
 
 

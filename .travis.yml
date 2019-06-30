@@ -4,14 +4,9 @@ compiler:
   - gcc
 jobs:
   include:
-    - stage: Unpack
+    - stage: Env
       script: 
         - travis_wait 30 Tests/testSetupCpuEnv.sh
-        - Tests/testUnpacking.sh
-    - stage: Training
-      script:
-        - travis_wait 30 Tests/testSetupFullEnv.sh
-        - Tests/testTraining.sh
     
 notifications:
   email:
