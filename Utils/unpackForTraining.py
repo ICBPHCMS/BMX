@@ -248,7 +248,7 @@ def myHash(value):
     
 def combinationSelection(tree,icombination,isSignal):
     #an additional tag muon
-    if (tree.Muon_tag_index[icombination]<0):
+    if (tree.Muon_tag_index[icombination]<=0):
         return False
 
     if (tree.BToKstll_lep1_pt[icombination]<1. or math.fabs(tree.BToKstll_lep1_eta[icombination])>=2.4):
@@ -367,10 +367,13 @@ def buildArrays(tree,Ncomb,selectedCombinationsSortedByVtxCL,isSignal=False,maxG
             )
             return None
         gobalFeatureArray[ifeature]=value
+        
+    nCombinationArray = numpy.array(0,dtype=numpy.int32)
     
     for iselectedCombination,combinationIndex in enumerate(selectedCombinationsSortedByVtxCL):
         if iselectedCombination>=Ncomb:
             break
+        nCombinationArray+=1
         for icombfeature in range(len(featuresPerCombination)):
             value = featuresPerCombination[icombfeature][1](combinationIndex,tree)
             if not numpy.isfinite(value):
@@ -407,7 +410,8 @@ def buildArrays(tree,Ncomb,selectedCombinationsSortedByVtxCL,isSignal=False,maxG
         "refSel":refSelArray,
         "bmass":bmassArray,
         "llmass":llmassArray,
-        "isMC":isMCArray
+        "isMC":isMCArray,
+        "nCombinations":nCombinationArray
     }
     
     
@@ -497,7 +501,8 @@ def convert(
         "refSel":[],
         "bmass":[],
         "llmass":[],
-        "isMC":[]
+        "isMC":[],
+        "nCombinations":[]
     }
     
     writerTest = {
@@ -507,7 +512,8 @@ def convert(
         "refSel":[],
         "bmass":[],
         "llmass":[],
-        "isMC":[]
+        "isMC":[],
+        "nCombinations":[]
     }
     
     
@@ -742,6 +748,7 @@ batchEndBackground = int(round(1.*len(backgroundFilesBatched)/args.numberOfBatch
 
 print "bkg slice: ",batchStartBackground,"-",batchEndBackground,"/",len(backgroundFilesBatched)
 #sys.exit(1)
+#signalFiles = signalFiles[:10]
 signalChain = Chain(map(lambda f: f[0],signalFiles))
 backgroundChain = Chain(backgroundFilesBatched[batchStartBackground:batchEndBackground])
 #backgroundChain = Chain([backgroundFiles[0][0]])#,backgroundFiles[1][0]])
